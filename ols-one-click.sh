@@ -86,8 +86,7 @@ deploy() {
 
     # 安装 OpenLiteSpeed
     echo "安装 OpenLiteSpeed..."
-    bash <(curl -s https://raw.githubusercontent.com/litespeedtech/ols1clk/master/ols1clk.sh)
-
+    bash <( curl -k https://raw.githubusercontent.com/litespeedtech/ols1clk/master/ols1clk.sh )
     # 安装数据库
     echo "安装数据库..."
     if [ "$PACKAGE_MANAGER" = "apt" ]; then
@@ -113,10 +112,10 @@ deploy() {
     sudo mysql -e "GRANT ALL PRIVILEGES ON $DB_NAME.* TO '$DB_USER'@'localhost';"
     sudo mysql -e "FLUSH PRIVILEGES;"
 
-    # 安装 lsphp 和相关扩展
-    echo "安装 lsphp 和 PHP 扩展..."
-    bash <(curl -s https://get.litespeedtech.com/lsphp/installer.sh)  # 安装 OpenLiteSpeed 的 PHP
-    $INSTALL_CMD lsphp lsphp-mysql lsphp-curl lsphp-gd lsphp-mbstring lsphp-xml lsphp-soap lsphp-intl lsphp-zip
+    # # 安装 lsphp 和相关扩展
+    # echo "安装 lsphp 和 PHP 扩展..."
+    # bash <(curl -s https://get.litespeedtech.com/lsphp/installer.sh)  # 安装 OpenLiteSpeed 的 PHP
+    # $INSTALL_CMD lsphp lsphp-mysql lsphp-curl lsphp-gd lsphp-mbstring lsphp-xml lsphp-soap lsphp-intl lsphp-zip
 
     # 下载 WordPress
     echo "下载并配置 WordPress..."
