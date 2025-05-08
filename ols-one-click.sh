@@ -22,6 +22,11 @@ fi
 
 SERVER_IP=$(hostname -I | awk '{print $1}')
 
+# 创建相关目录
+WEB_ROOT="/var/www/html"
+if [ ! -d "$WEB_ROOT" ]; then
+    sudo mkdir -p $WEB_ROOT
+fi
 # 检查并修复 libcrypt.so.1 缺失问题
 fix_libcrypt() {
     echo "检查 libcrypt.so.1 是否存在..."
@@ -72,7 +77,6 @@ open_ports() {
 }
 
 # 安装 OpenLiteSpeed
-# 安装 OpenLiteSpeed
 install_openlitespeed() {
     echo "安装 OpenLiteSpeed..."
 
@@ -109,6 +113,8 @@ deploy() {
     else
         sudo yum update -y
     fi
+
+    
     # 安装必要工具
     echo "安装基础工具..."
     $INSTALL_CMD wget unzip tar curl openssl
@@ -153,23 +159,23 @@ deploy() {
     tar -xzf latest.tar.gz
     rm -f latest.tar.gz
 
-    sudo rm -rf /var/www/html/wordpress
-    sudo mv wordpress /var/www/html/
-    sudo chown -R $WEBSERVER_USER:$WEBSERVER_USER /var/www/html/wordpress
+    sudo rm -rf $WEB_ROOT/wordpress
+    sudo mv wordpress $WEB_ROOT
+    sudo chown -R $WEBSERVER_USER:$WEBSERVER_USER $WEB_ROOT/wordpress
 
-    sudo cp /var/www/html/wordpress/wp-config-sample.php /var/www/html/wordpress/wp-config.php
-    sudo sed -i "s/database_name_here/$DB_NAME/" /var/www/html/wordpress/wp-config.php
-    sudo sed -i "s/username_here/$DB_USER/" /var/www/html/wordpress/wp-config.php
-    sudo sed -i "s/password_here/$DB_PASSWORD/" /var/www/html/wordpress/wp-config.php
+    sudo cp $WEB_ROOT/wordpress/wp-config-sample.php $WEB_ROOT/wordpress/wp-config.php
+    sudo sed -i "s/database_name_here/$DB_NAME/" $WEB_ROOT//html/wordpress/wp-config.php
+    sudo sed -i "s/username_here/$DB_USER/" $WEB_ROOT/html/wordpress/wp-config.php
+    sudo sed -i "s/password_here/$DB_PASSWORD/"$WEB_ROOT/html/wordpress/wp-config.php
 
     # 设置虚拟主机路径
     echo "配置 OpenLiteSpeed 虚拟主机路径..."
-    sudo sed -i "s|/usr/local/lsws/DEFAULT|/var/www/html/wordpress|g" /usr/local/lsws/conf/httpd_config.conf
+    sudo sed -i "s|/usr/local/lsws/DEFAULT|$WEB_ROOT/wordpress|g" /usr/local/lsws/conf/httpd_config.conf
     sudo systemctl restart lsws
 
     # 安装 LiteSpeed 缓存插件
     echo "安装 LiteSpeed 缓存插件..."
-    PLUGIN_DIR="/var/www/html/wordpress/wp-content/plugins"
+    PLUGIN_DIR="$WEB_ROOT/wordpress/wp-content/plugins"
     mkdir -p "$PLUGIN_DIR"
     wget -q -O "$PLUGIN_DIR/litespeed-cache.zip" https://downloads.wordpress.org/plugin/litespeed-cache.4.4.1.zip
     sudo unzip "$PLUGIN_DIR/litespeed-cache.zip" -d "$PLUGIN_DIR"
@@ -186,35 +192,47 @@ deploy() {
 
 show_info(){
     # 输出部署信息总结
-    echo -e "\n==================== 部署信息 ===================="
-    echo -e "✅ WordPress 站点路径:        /var/www/html/wordpress"
-    echo -e "🌐 访问地址（请替换为你的 IP）: http://$SERVER_IP 或 https://$SERVER_IP"
-    echo -e "🔐 数据库名称:                $DB_NAME"
-    echo -e "👤 数据库用户:                $DB_USER"
-    echo -e "🔑 数据库密码:                $DB_PASSWORD"
-    echo -e "📁 Filebrowser 文件管理器:    http://$SERVER_IP:8081"
-    echo -e "👤 Filebrowser 登录账号:      admin"
-    echo -e "🔑 Filebrowser 登录密码:      admin"
+    echo -e "\n==================== infomation ===================="
+    echo -e "✅ WordPress site path:        $WEB_ROOT/wordpress"
+    echo -e "🌐 wordpre home: http://$SERVER_IP or https://$SERVER_IP"
+    echo -e "🔐 database name:                $DB_NAME"
+    echo -e "👤 database user:                $DB_USER"
+    echo -e "🔑 datebase pwd :                $DB_PASSWORD"
+    echo -e "📁 Filebrowser file manage:    http://$SERVER_IP:8081"
+    echo -e "👤 Filebrowser account  :      admin"
+    echo -e "🔑 Filebrowser pwd      :      admin"
     echo -e "🧱 开放端口:                  22, 80, 443, 7080, 8081"
-    echo -e "🚀 OpenLiteSpeed 面板地址:   https://$SERVER_IP:7080 (默认账户: admin，首次登录需设置密码)"
-    echo -e "⚙️ LiteSpeed 缓存插件路径:   /var/www/html/wordpress/wp-content/plugins/litespeed-cache"
+    echo -e "🚀 OpenLiteSpeed panel url:   https://$SERVER_IP:7080 (default: admin，renew pwd firt login)"
+    echo -e "⚙️ LiteSpeed cache plugin:   $WEB_ROOT/wordpress/wp-content/plugins/litespeed-cache"
     echo -e "===================================================\n"
 }
 
 install_filebrowser() {
-    echo "安装 Filebrowser（文件管理器）..."
+    echo "安装 Filebrowser 文件管理器..."
     curl -fsSL https://raw.githubusercontent.com/filebrowser/get/master/get.sh | bash
+    sudo mkdir -p /etc/filebrowser
+    sudo filebrowser -r $WEB_ROOT/html/wordpress -p 8081 -d /etc/filebrowser/filebrowser.db &
 
-    sudo mkdir -p /srv/filebrowser
-    sudo filebrowser config init
-    sudo filebrowser config set --root /var/www/html
-    sudo filebrowser users add admin admin --perm.admin
+    # 可选：设置为 systemd 服务（增强稳定性）
+    sudo tee /etc/systemd/system/filebrowser.service > /dev/null <<EOF
+[Unit]
+Description=Filebrowser
+After=network.target
 
-    sudo nohup filebrowser -r /var/www/html -p 8081 > /dev/null 2>&1 &
-    echo "✅ Filebrowser 启动成功，请访问: http://<你的IP>:8081"
-    echo "默认用户名：admin"
-    echo "默认密码：admin"
+[Service]
+ExecStart=/usr/local/bin/filebrowser -r $WEB_ROOT/ -p 8081 -d /etc/filebrowser/filebrowser.db
+Restart=always
+User=root
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    sudo systemctl daemon-reexec
+    sudo systemctl enable filebrowser
+    sudo systemctl start filebrowser
 }
+
 
 # 卸载函数
 uninstall() {
@@ -236,7 +254,7 @@ uninstall() {
     $REMOVE_CMD lsphp*
     eval "$AUTOREMOVE_CMD"
 
-    sudo rm -rf /var/www/html/wordpress
+    sudo rm -rf $WEB_ROOT/wordpress
 
     # 防火墙清理
     echo "关闭防火墙端口..."
