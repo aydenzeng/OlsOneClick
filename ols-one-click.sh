@@ -19,7 +19,7 @@ else
     echo "不支持的系统发行版。"
     exit 1
 fi
-
+SERVER_IP=$(hostname -I | awk '{print $1}')
 # 检查并修复 libcrypt.so.1 缺失问题
 fix_libcrypt() {
     echo "检查 libcrypt.so.1 是否存在..."
@@ -52,6 +52,8 @@ open_ports() {
         $FIREWALL_CMD allow 22
         $FIREWALL_CMD allow 80
         $FIREWALL_CMD allow 443
+        $FIREWALL_CMD allow 7080
+        $FIREWALL_CMD allow 8081
     else
         sudo systemctl start firewalld
         sudo systemctl enable firewalld
@@ -61,6 +63,8 @@ open_ports() {
         sudo firewall-cmd --reload
         $FIREWALL_CMD --permanent --add-port=80/tcp
         $FIREWALL_CMD --permanent --add-port=443/tcp
+        $FIREWALL_CMD --permanent --add-port=7080/tcp
+        $FIREWALL_CMD --permanent --add-port=8081/tcp
         $FIREWALL_CMD --reload
     fi
 }
@@ -76,13 +80,15 @@ deploy() {
     else
         sudo yum update -y
     fi
-
     # 安装必要工具
     echo "安装基础工具..."
     $INSTALL_CMD wget unzip tar curl openssl
 
     # 修复 libcrypt 问题
     fix_libcrypt
+
+    # 安装 文件管理
+    install_filebrowser
 
     # 安装 OpenLiteSpeed
     echo "安装 OpenLiteSpeed..."
@@ -154,6 +160,36 @@ deploy() {
     echo "数据库用户: $DB_USER"
     echo "数据库密码: $DB_PASSWORD"
 }
+show_info(){
+    # 输出部署信息总结
+    echo -e "\n==================== 部署信息 ===================="
+    echo -e "✅ WordPress 站点路径:        /var/www/html/wordpress"
+    echo -e "🌐 访问地址（请替换为你的 IP）: http://$SERVER_IP 或 https://$SERVER_IP"
+    echo -e "🔐 数据库名称:                $DB_NAME"
+    echo -e "👤 数据库用户:                $DB_USER"
+    echo -e "🔑 数据库密码:                $DB_PASSWORD"
+    echo -e "📁 Filebrowser 文件管理器:    http://$SERVER_IP:8081"
+    echo -e "👤 Filebrowser 登录账号:      admin"
+    echo -e "🔑 Filebrowser 登录密码:      admin"
+    echo -e "🧱 开放端口:                  22, 80, 443, 7080, 8081"
+    echo -e "🚀 OpenLiteSpeed 面板地址:   https://$SERVER_IP:7080 (默认账户: admin，首次登录需设置密码)"
+    echo -e "⚙️ LiteSpeed 缓存插件路径:   /var/www/html/wordpress/wp-content/plugins/litespeed-cache"
+    echo -e "===================================================\n"
+}
+install_filebrowser() {
+    echo "安装 Filebrowser（文件管理器）..."
+    curl -fsSL https://raw.githubusercontent.com/filebrowser/get/master/get.sh | bash
+
+    sudo mkdir -p /srv/filebrowser
+    sudo filebrowser config init
+    sudo filebrowser config set --root /var/www/html
+    sudo filebrowser users add admin admin --perm.admin
+
+    sudo nohup filebrowser -r /var/www/html -p 8081 > /dev/null 2>&1 &
+    echo "✅ Filebrowser 启动成功，请访问: http://<你的IP>:8081"
+    echo "默认用户名：admin"
+    echo "默认密码：admin"
+}
 
 # 卸载函数
 uninstall() {
@@ -180,13 +216,17 @@ uninstall() {
     # 防火墙清理
     echo "关闭防火墙端口..."
     if [ "$PACKAGE_MANAGER" = "apt" ]; then
-        $FIREWALL_CMD delete allow 22
+        # $FIREWALL_CMD delete allow 22
         $FIREWALL_CMD delete allow 80
         $FIREWALL_CMD delete allow 443
+        $FIREWALL_CMD delete allow 8081
+        $FIREWALL_CMD delete allow 7080
     else
-        $FIREWALL_CMD --permanent --remove-port=22/tcp
+        # $FIREWALL_CMD --permanent --remove-port=22/tcp
         $FIREWALL_CMD --permanent --remove-port=80/tcp
         $FIREWALL_CMD --permanent --remove-port=443/tcp
+        $FIREWALL_CMD --permanent --remove-port=7080/tcp
+        $FIREWALL_CMD --permanent --remove-port=8081/tcp
         $FIREWALL_CMD --reload
     fi
 
