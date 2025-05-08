@@ -104,7 +104,7 @@ install_openlitespeed() {
 
 # 部署函数
 deploy() {
-    echo "🚀 Start Deploying..."
+    echo "Start Deploying..."
 
     # 更新系统
     echo "Updating..."
@@ -211,7 +211,8 @@ install_filebrowser() {
     echo "Install Filebrowser File Manage..."
     curl -fsSL https://raw.githubusercontent.com/filebrowser/get/master/get.sh | bash
     sudo mkdir -p /etc/filebrowser
-    filebrowser -r $WEB_ROOT/ -p 8081 -d /etc/filebrowser/filebrowser.db &
+
+    # filebrowser -r /var/www/html/ -p 8081 -d /etc/filebrowser/filebrowser.db &
 
     # 可选：设置为 systemd 服务（增强稳定性）
     sudo tee /etc/systemd/system/filebrowser.service > /dev/null <<EOF
