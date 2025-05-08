@@ -156,9 +156,8 @@ deploy() {
     open_ports
 
     echo -e "\n✅ 部署完成！"
-    echo "数据库名: $DB_NAME"
-    echo "数据库用户: $DB_USER"
-    echo "数据库密码: $DB_PASSWORD"
+
+    show_info
 }
 show_info(){
     # 输出部署信息总结
