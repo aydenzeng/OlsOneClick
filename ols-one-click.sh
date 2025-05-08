@@ -19,7 +19,9 @@ else
     echo "不支持的系统发行版。"
     exit 1
 fi
+
 SERVER_IP=$(hostname -I | awk '{print $1}')
+
 # 检查并修复 libcrypt.so.1 缺失问题
 fix_libcrypt() {
     echo "检查 libcrypt.so.1 是否存在..."
@@ -58,7 +60,7 @@ open_ports() {
         sudo systemctl start firewalld
         sudo systemctl enable firewalld
 
-         # 在修改防火墙规则之前，临时允许 SSH 端口（22）
+        # 在修改防火墙规则之前，临时允许 SSH 端口（22）
         sudo firewall-cmd --zone=public --add-port=22/tcp --permanent
         sudo firewall-cmd --reload
         $FIREWALL_CMD --permanent --add-port=80/tcp
@@ -68,6 +70,33 @@ open_ports() {
         $FIREWALL_CMD --reload
     fi
 }
+
+# 安装 OpenLiteSpeed
+# 安装 OpenLiteSpeed
+install_openlitespeed() {
+    echo "安装 OpenLiteSpeed..."
+
+    # 使用 OpenLiteSpeed 官方安装脚本
+    if [ "$PACKAGE_MANAGER" = "apt" ]; then
+        wget -qO - https://rpms.litespeedtech.com/debian/enable_openlitespeed_repository.sh | sudo bash
+        sudo apt update
+        sudo apt install openlitespeed -y
+    elif [ "$PACKAGE_MANAGER" = "yum" ]; then
+        wget -qO - https://rpms.litespeedtech.com/centos/enable_openlitespeed_repository.sh | sudo bash
+        sudo yum install openlitespeed -y
+    fi
+
+    # 启动 OpenLiteSpeed
+    sudo systemctl enable lsws
+    sudo systemctl start lsws
+
+    # 配置防火墙
+    echo "配置防火墙..."
+    open_ports
+
+    echo "OpenLiteSpeed 安装完成并启动。"
+}
+
 
 # 部署函数
 deploy() {
@@ -87,12 +116,12 @@ deploy() {
     # 修复 libcrypt 问题
     fix_libcrypt
 
-    # 安装 文件管理
+    # 安装文件管理
     install_filebrowser
 
     # 安装 OpenLiteSpeed
-    echo "安装 OpenLiteSpeed..."
-    bash <( curl -k https://raw.githubusercontent.com/litespeedtech/ols1clk/master/ols1clk.sh )
+    install_openlitespeed
+
     # 安装数据库
     echo "安装数据库..."
     if [ "$PACKAGE_MANAGER" = "apt" ]; then
@@ -117,11 +146,6 @@ deploy() {
     sudo mysql -e "CREATE USER IF NOT EXISTS '$DB_USER'@'localhost' IDENTIFIED BY '$DB_PASSWORD';"
     sudo mysql -e "GRANT ALL PRIVILEGES ON $DB_NAME.* TO '$DB_USER'@'localhost';"
     sudo mysql -e "FLUSH PRIVILEGES;"
-
-    # # 安装 lsphp 和相关扩展
-    # echo "安装 lsphp 和 PHP 扩展..."
-    # bash <(curl -s https://get.litespeedtech.com/lsphp/installer.sh)  # 安装 OpenLiteSpeed 的 PHP
-    # $INSTALL_CMD lsphp lsphp-mysql lsphp-curl lsphp-gd lsphp-mbstring lsphp-xml lsphp-soap lsphp-intl lsphp-zip
 
     # 下载 WordPress
     echo "下载并配置 WordPress..."
@@ -159,6 +183,7 @@ deploy() {
 
     show_info
 }
+
 show_info(){
     # 输出部署信息总结
     echo -e "\n==================== 部署信息 ===================="
@@ -175,6 +200,7 @@ show_info(){
     echo -e "⚙️ LiteSpeed 缓存插件路径:   /var/www/html/wordpress/wp-content/plugins/litespeed-cache"
     echo -e "===================================================\n"
 }
+
 install_filebrowser() {
     echo "安装 Filebrowser（文件管理器）..."
     curl -fsSL https://raw.githubusercontent.com/filebrowser/get/master/get.sh | bash
@@ -215,13 +241,11 @@ uninstall() {
     # 防火墙清理
     echo "关闭防火墙端口..."
     if [ "$PACKAGE_MANAGER" = "apt" ]; then
-        # $FIREWALL_CMD delete allow 22
         $FIREWALL_CMD delete allow 80
         $FIREWALL_CMD delete allow 443
         $FIREWALL_CMD delete allow 8081
         $FIREWALL_CMD delete allow 7080
     else
-        # $FIREWALL_CMD --permanent --remove-port=22/tcp
         $FIREWALL_CMD --permanent --remove-port=80/tcp
         $FIREWALL_CMD --permanent --remove-port=443/tcp
         $FIREWALL_CMD --permanent --remove-port=7080/tcp
@@ -243,4 +267,3 @@ case "$1" in
     *)
         echo "用法: $0 {deploy|uninstall}"
         ;;
-esac
