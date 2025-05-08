@@ -29,12 +29,12 @@ if [ ! -d "$WEB_ROOT" ]; then
 fi
 # 检查并修复 libcrypt.so.1 缺失问题
 fix_libcrypt() {
-    echo "检查 libcrypt.so.1 是否存在..."
+    echo "Check libcrypt.so.1 Exists..."
     if ! ldconfig -p | grep -q libcrypt.so.1; then
-        echo "libcrypt.so.1 缺失，尝试修复..."
+        echo "libcrypt.so.1 not found,try repair..."
 
         # 安装兼容包
-        $INSTALL_CMD libxcrypt-compat || echo "libxcrypt-compat 安装失败或不可用，继续尝试手动修复..."
+        $INSTALL_CMD libxcrypt-compat || echo "libxcrypt-compat fail intall，reapir shoudong..."
 
         # 手动修复路径和链接
         if [ ! -d /usr/lib64 ]; then
@@ -47,13 +47,13 @@ fix_libcrypt() {
             sudo ln -s /usr/lib/libcrypt.so.1 /usr/lib64/libcrypt.so.1
         fi
     else
-        echo "libcrypt.so.1 已存在。"
+        echo "libcrypt.so.1 exits。"
     fi
 }
 
 # 开放端口
 open_ports() {
-    echo "配置防火墙..."
+    echo "Config Firewall..."
     if [ "$PACKAGE_MANAGER" = "apt" ]; then
         sudo ufw status | grep -q inactive && sudo ufw enable
         $FIREWALL_CMD allow 22
@@ -78,7 +78,7 @@ open_ports() {
 
 # 安装 OpenLiteSpeed
 install_openlitespeed() {
-    echo "安装 OpenLiteSpeed..."
+    echo "Install OpenLiteSpeed..."
 
     # 使用 OpenLiteSpeed 官方安装脚本
     if [ "$PACKAGE_MANAGER" = "apt" ]; then
@@ -95,19 +95,19 @@ install_openlitespeed() {
     sudo systemctl start lsws
 
     # 配置防火墙
-    echo "配置防火墙..."
+    echo "Config firewall..."
     open_ports
 
-    echo "OpenLiteSpeed 安装完成并启动。"
+    echo "OpenLiteSpeed Install success And Start working。"
 }
 
 
 # 部署函数
 deploy() {
-    echo "🚀 开始部署..."
+    echo "🚀 Start Deploying..."
 
     # 更新系统
-    echo "更新系统..."
+    echo "Updating..."
     if [ "$PACKAGE_MANAGER" = "apt" ]; then
         sudo apt update && sudo apt upgrade -y
     else
@@ -116,7 +116,7 @@ deploy() {
 
     
     # 安装必要工具
-    echo "安装基础工具..."
+    echo "Install base tools..."
     $INSTALL_CMD wget unzip tar curl openssl
 
     # 修复 libcrypt 问题
@@ -129,7 +129,7 @@ deploy() {
     install_openlitespeed
 
     # 安装数据库
-    echo "安装数据库..."
+    echo "Install database..."
     if [ "$PACKAGE_MANAGER" = "apt" ]; then
         $INSTALL_CMD mysql-server
         sudo systemctl enable mysql
@@ -147,14 +147,14 @@ deploy() {
     DB_USER="wordpress_user"
     DB_PASSWORD=$(openssl rand -base64 12)
 
-    echo "创建数据库和用户..."
+    echo "Create Database And User..."
     sudo mysql -e "CREATE DATABASE IF NOT EXISTS $DB_NAME;"
     sudo mysql -e "CREATE USER IF NOT EXISTS '$DB_USER'@'localhost' IDENTIFIED BY '$DB_PASSWORD';"
     sudo mysql -e "GRANT ALL PRIVILEGES ON $DB_NAME.* TO '$DB_USER'@'localhost';"
     sudo mysql -e "FLUSH PRIVILEGES;"
 
     # 下载 WordPress
-    echo "下载并配置 WordPress..."
+    echo "Downing And Install WordPress..."
     wget -q https://wordpress.org/latest.tar.gz
     tar -xzf latest.tar.gz
     rm -f latest.tar.gz
@@ -169,12 +169,12 @@ deploy() {
     sudo sed -i "s/password_here/$DB_PASSWORD/"$WEB_ROOT/html/wordpress/wp-config.php
 
     # 设置虚拟主机路径
-    echo "配置 OpenLiteSpeed 虚拟主机路径..."
+    echo "Config OpenLiteSpeed Vhost Path..."
     sudo sed -i "s|/usr/local/lsws/DEFAULT|$WEB_ROOT/wordpress|g" /usr/local/lsws/conf/httpd_config.conf
     sudo systemctl restart lsws
 
     # 安装 LiteSpeed 缓存插件
-    echo "安装 LiteSpeed 缓存插件..."
+    echo "Install LiteSpeed Cache Plugin..."
     PLUGIN_DIR="$WEB_ROOT/wordpress/wp-content/plugins"
     mkdir -p "$PLUGIN_DIR"
     wget -q -O "$PLUGIN_DIR/litespeed-cache.zip" https://downloads.wordpress.org/plugin/litespeed-cache.4.4.1.zip
@@ -185,14 +185,14 @@ deploy() {
     # 配置防火墙
     open_ports
 
-    echo -e "\n✅ 部署完成！"
+    echo -e "\n✅ Deploy Success！"
 
     show_info
 }
 
 show_info(){
     # 输出部署信息总结
-    echo -e "\n==================== infomation ===================="
+    echo -e "\n==================== Infomation ===================="
     echo -e "✅ WordPress site path:        $WEB_ROOT/wordpress"
     echo -e "🌐 wordpre home: http://$SERVER_IP or https://$SERVER_IP"
     echo -e "🔐 database name:                $DB_NAME"
@@ -208,10 +208,10 @@ show_info(){
 }
 
 install_filebrowser() {
-    echo "安装 Filebrowser 文件管理器..."
+    echo "Install Filebrowser File Manage..."
     curl -fsSL https://raw.githubusercontent.com/filebrowser/get/master/get.sh | bash
     sudo mkdir -p /etc/filebrowser
-    sudo filebrowser -r $WEB_ROOT/html/wordpress -p 8081 -d /etc/filebrowser/filebrowser.db &
+    filebrowser -r $WEB_ROOT/ -p 8081 -d /etc/filebrowser/filebrowser.db &
 
     # 可选：设置为 systemd 服务（增强稳定性）
     sudo tee /etc/systemd/system/filebrowser.service > /dev/null <<EOF
