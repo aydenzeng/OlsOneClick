@@ -267,3 +267,4 @@ case "$1" in
     *)
         echo "用法: $0 {deploy|uninstall}"
         ;;
+esac
