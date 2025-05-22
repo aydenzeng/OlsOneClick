@@ -210,6 +210,55 @@ deploy() {
     show_info
     echo -e "\n✅ Deployment completed successfully! Info saved to $INFO_FILE"
 }
+# 卸载函数
+uninstall() {
+    echo "🗑️ 开始卸载..."
 
+    sudo systemctl stop lsws
+    sudo rm -rf /usr/local/lsws
+
+    if [ "$PACKAGE_MANAGER" = "apt" ]; then
+        $REMOVE_CMD mysql-server mysql-client mysql-common
+        eval "$AUTOREMOVE_CMD"
+        sudo rm -rf /var/lib/mysql /etc/mysql
+    else
+        $REMOVE_CMD mariadb-server
+        eval "$AUTOREMOVE_CMD"
+        sudo rm -rf /var/lib/mysql /etc/my.cnf
+    fi
+
+    $REMOVE_CMD lsphp*
+    eval "$AUTOREMOVE_CMD"
+
+    sudo rm -rf /var/www/html/wordpress
+
+    # 防火墙清理
+    echo "关闭防火墙端口..."
+    if [ "$PACKAGE_MANAGER" = "apt" ]; then
+        $FIREWALL_CMD delete allow 80
+        $FIREWALL_CMD delete allow 443
+        $FIREWALL_CMD delete allow 8081
+        $FIREWALL_CMD delete allow 7080
+    else
+        $FIREWALL_CMD --permanent --remove-port=80/tcp
+        $FIREWALL_CMD --permanent --remove-port=443/tcp
+        $FIREWALL_CMD --permanent --remove-port=7080/tcp
+        $FIREWALL_CMD --permanent --remove-port=8081/tcp
+        $FIREWALL_CMD --reload
+    fi
+
+    echo "✅ 卸载完成！"
+}
 #================== Execute Deployment ==================
-deploy
+# 主程序入口
+case "$1" in
+    deploy)
+        deploy
+        ;;
+    uninstall)
+        uninstall
+        ;;
+    *)
+        echo "用法: $0 {deploy|uninstall}"
+        ;;
+esac
