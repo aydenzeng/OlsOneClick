@@ -74,18 +74,36 @@ update_sys_tools() {
 
 install_openlitespeed() {
     echo "📦 Installing OpenLiteSpeed..."
+
+    # 添加 LiteSpeed 源
+    add_litespeed_repo() {
+        wget -qO - https://repo.litespeed.sh | sudo bash
+    }
+
+    # 统一安装命令并检测错误
+    install_package() {
+        local pkg="$1"
+        $INSTALL_CMD $pkg || { echo "❌ Failed to install $pkg"; exit 1; }
+    }
+
+    add_litespeed_repo || { echo "❌ Failed to add LiteSpeed repository"; exit 1; }
+
     if [ "$PACKAGE_MANAGER" = "apt" ]; then
-        wget -qO - https://rpms.litespeedtech.com/debian/enable_openlitespeed_repository.sh | sudo bash
-        sudo apt update
-        $INSTALL_CMD openlitespeed
-    else
-        wget -qO - https://rpms.litespeedtech.com/centos/enable_openlitespeed_repository.sh | sudo bash
-        $INSTALL_CMD openlitespeed
+        sudo apt update || { echo "❌ apt update failed"; exit 1; }
     fi
-    sudo systemctl enable lsws --now
+
+    # 安装 OpenLiteSpeed 和 PHP 81 相关模块
+    install_package "openlitespeed"
+    install_package "lsphp81 lsphp81-common lsphp81-mysql"
+
+    sudo systemctl enable lsws --now || { echo "❌ Failed to enable/start OpenLiteSpeed service"; exit 1; }
+
     open_ports
+
     echo "✅ OpenLiteSpeed installation completed"
 }
+
+
 
 install_database() {
     echo "🗄️ Installing database service..."
