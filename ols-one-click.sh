@@ -123,10 +123,14 @@ deploy() {
     fix_libcrypt
 
     # 安装文件管理
-    install_filebrowser
+    if ! command -v filebrowser &> /dev/null; then
+        install_filebrowser
+    fi
 
     # 安装 OpenLiteSpeed
-    install_openlitespeed
+    if [ ! -d "/usr/local/lsws" ]; then
+        install_openlitespeed
+    fi
 
     # 安装数据库
     echo "Install database..."
@@ -162,11 +166,14 @@ deploy() {
     sudo rm -rf $WEB_ROOT/wordpress
     sudo mv wordpress $WEB_ROOT
     sudo chown -R $WEBSERVER_USER:$WEBSERVER_USER $WEB_ROOT/wordpress
+    sudo find $WEB_ROOT/wordpress/ -type d -exec chmod 755 {} \;
+    sudo find $WEB_ROOT/wordpress/ -type f -exec chmod 644 {} \;
+
 
     sudo cp $WEB_ROOT/wordpress/wp-config-sample.php $WEB_ROOT/wordpress/wp-config.php
-    sudo sed -i "s/database_name_here/$DB_NAME/" $WEB_ROOT//html/wordpress/wp-config.php
-    sudo sed -i "s/username_here/$DB_USER/" $WEB_ROOT/html/wordpress/wp-config.php
-    sudo sed -i "s/password_here/$DB_PASSWORD/"$WEB_ROOT/html/wordpress/wp-config.php
+    sudo sed -i "s/database_name_here/$DB_NAME/" $WEB_ROOT/wordpress/wp-config.php
+    sudo sed -i "s/username_here/$DB_USER/" $WEB_ROOT/wordpress/wp-config.php
+    sudo sed -i "s/password_here/$DB_PASSWORD/"$WEB_ROOT/wordpress/wp-config.php
 
     # 设置虚拟主机路径
     echo "Config OpenLiteSpeed Vhost Path..."
@@ -209,10 +216,12 @@ show_info(){
 
 install_filebrowser() {
     echo "Install Filebrowser File Manage..."
-    curl -fsSL https://raw.githubusercontent.com/filebrowser/get/master/get.sh | bash
+    if ! curl -fsSL https://raw.githubusercontent.com/filebrowser/get/master/get.sh | bash; then
+        echo "❌ 无法安装 filebrowser，请手动检查网络或更换镜像。"
+        return 1
+    fi
     sudo mkdir -p /etc/filebrowser
-
-    # filebrowser -r /var/www/html/ -p 8081 -d /etc/filebrowser/filebrowser.db &
+    # filebrowser -r /var/www/html/ -p 8081 --address 0.0.0.0 -d /etc/filebrowser/filebrowser.db &
 
     # 可选：设置为 systemd 服务（增强稳定性）
     sudo tee /etc/systemd/system/filebrowser.service > /dev/null <<EOF
@@ -221,7 +230,7 @@ Description=Filebrowser
 After=network.target
 
 [Service]
-ExecStart=/usr/local/bin/filebrowser -r $WEB_ROOT/ -p 8081 -d /etc/filebrowser/filebrowser.db
+ExecStart=/usr/local/bin/filebrowser -r $WEB_ROOT/ -p 8081 --address 0.0.0.0 -d /etc/filebrowser/filebrowser.db
 Restart=always
 User=root
 
@@ -240,7 +249,10 @@ uninstall() {
     echo "🗑️ 开始卸载..."
 
     sudo systemctl stop lsws
-    sudo rm -rf /usr/local/lsws
+    sudo systemctl disable lsws
+    
+    sudo systemctl stop filebrowser
+    sudo systemctl disable filebrowser
 
     if [ "$PACKAGE_MANAGER" = "apt" ]; then
         $REMOVE_CMD mysql-server mysql-client mysql-common
@@ -255,7 +267,6 @@ uninstall() {
     $REMOVE_CMD lsphp*
     eval "$AUTOREMOVE_CMD"
 
-    sudo rm -rf $WEB_ROOT/wordpress
 
     # 防火墙清理
     echo "关闭防火墙端口..."
@@ -272,6 +283,13 @@ uninstall() {
         $FIREWALL_CMD --reload
     fi
 
+    sudo rm -rf /usr/local/lsws
+    sudo rm -rf $WEB_ROOT/wordpress
+    sudo rm -rf /etc/filebrowser
+    sudo rm -f /etc/systemd/system/filebrowser.service
+    sudo rm -rf /etc/systemd/system/filebrowser.service
+    sudo rm -rf /etc/filebrowser
+    sudo rm -rf /usr/local/bin/filebrowser
     echo "✅ 卸载完成！"
 }
 
