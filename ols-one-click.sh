@@ -256,6 +256,29 @@ uninstall() {
 #================== Execute Deployment ==================
 # 主程序入口
 case "$1" in
+    status)
+        #检查lsws服务状态
+        if systemctl is-active --quiet lsws; then
+            echo "✅ OpenLiteSpeed is running."
+        else
+            echo "❌ OpenLiteSpeed is not running."
+        fi
+        #检查Filebrowser服务状态
+        if systemctl is-active --quiet filebrowser; then
+            echo "✅ Filebrowser is running."
+        else
+            echo "❌ Filebrowser is not running."
+        fi
+        #检查数据库服务状态
+        if systemctl is-active --quiet mysql; then
+            echo "✅ Database service is running."
+        else
+            echo "❌ Database service is not running."
+        fi
+        ;;
+    resetAdminPass)
+        sudo /usr/local/lsws/admin/misc/admpass.sh
+        ;;
     install)
         deploy
         ;;
@@ -263,6 +286,6 @@ case "$1" in
         uninstall
         ;;
     *)
-        echo "用法: $0 {deploy|uninstall}"
+        echo "用法: $0 {install|uninstall|resetAdminPass|status}"
         ;;
 esac
