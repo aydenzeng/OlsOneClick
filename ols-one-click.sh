@@ -6,7 +6,7 @@ DB_USER="wordpress_user"
 DB_PASSWORD=$(openssl rand -base64 12)
 WEB_ROOT="/var/www/html"
 INFO_FILE="deploy_info.txt"
-
+WEBSERVER_USER="www"
 #=============== Check System Distribution ===============
 if [ -f /etc/debian_version ]; then
     PACKAGE_MANAGER="apt"
@@ -14,14 +14,12 @@ if [ -f /etc/debian_version ]; then
     REMOVE_CMD="sudo apt purge -y"
     AUTOREMOVE_CMD="sudo apt autoremove -y"
     FIREWALL_CMD="sudo ufw"
-    WEBSERVER_USER="www-data"
 elif [ -f /etc/redhat-release ]; then
     PACKAGE_MANAGER="yum"
     INSTALL_CMD="sudo yum install -y"
     REMOVE_CMD="sudo yum remove -y"
     AUTOREMOVE_CMD="echo 'YUM does not support autoremove, skipping cleanup'"
     FIREWALL_CMD="sudo firewall-cmd"
-    WEBSERVER_USER="nobody"
 else
     echo "❌ Unsupported system distribution."
     exit 1
@@ -143,9 +141,7 @@ install_wordpress() {
     sudo sed -i "s/username_here/$DB_USER/" $WEB_ROOT/wordpress/wp-config.php
     sudo sed -i "s/password_here/$DB_PASSWORD/" $WEB_ROOT/wordpress/wp-config.php
 
-    echo "🧩 Setting virtual host path..."
-    sudo sed -i "s|/usr/local/lsws/DEFAULT|$WEB_ROOT/wordpress|g" /usr/local/lsws/conf/httpd_config.conf
-    sudo systemctl restart lsws
+    create_wordpress_vhost  # 这里调用创建虚拟主机
 
     echo "📦 Installing LiteSpeed Cache plugin..."
     PLUGIN_DIR="$WEB_ROOT/wordpress/wp-content/plugins"
@@ -155,6 +151,74 @@ install_wordpress() {
     sudo chown -R $WEBSERVER_USER:$WEBSERVER_USER "$PLUGIN_DIR/litespeed-cache"
     rm -f "$PLUGIN_DIR/litespeed-cache.zip"
 }
+
+create_wordpress_vhost() {
+    echo "⚙️ Create OpenLiteSpeed WordPress Vhost Config..."
+
+    # 虚拟主机配置文件路径
+    VHOST_CONF="/usr/local/lsws/conf/vhosts/wordpress/vhost.conf"
+    VHOST_ROOT="$WEB_ROOT/wordpress"
+
+    # 创建虚拟主机目录（如果不存在）
+    sudo mkdir -p "$(dirname "$VHOST_CONF")"
+
+    # 写入虚拟主机配置内容
+    sudo tee "$VHOST_CONF" > /dev/null <<EOF
+docRoot                   $VHOST_ROOT
+vhRoot                    /usr/local/lsws/conf/vhosts/wordpress
+configFile                $VHOST_CONF
+allowSymbolLink           1
+enableScript              1
+restrained                0
+index  {
+  useServer               0
+  indexFiles              index.php, index.html
+}
+extProcessor php {
+  type                    lsapi
+  address                 uds://tmp/lshttpd/lsphp.sock
+  maxConns                35
+  env                     PHP_LSAPI_MAX_REQUESTS=500
+  initTimeout             60
+  retryTimeout            0
+  persistConn             1
+  respBuffer              0
+  autoStart               1
+  path                    /usr/local/lsws/lsphp81/bin/lsphp
+  backlog                 100
+  instances               1
+  priority                0
+  memSoftLimit            2047M
+  memHardLimit            2047M
+  procSoftLimit           400
+  procHardLimit           500
+  cpuSoftLimit            30
+  cpuHardLimit            60
+}
+scriptHandler {
+  add                     lsapi:php
+}
+security {
+  allowBrowse             1
+}
+errorHandler 404 {
+  url                     /index.php
+  override                1
+}
+accessControl {
+  allow                   ALL
+}
+EOF
+
+    # 修改默认主机配置文件，使用这个wordpress虚拟主机
+    sudo sed -i "s|/usr/local/lsws/DEFAULT|$VHOST_ROOT|g" /usr/local/lsws/conf/httpd_config.conf
+
+    # 重启服务应用配置
+    sudo systemctl restart lsws
+
+    echo "✅ WordPress 虚拟主机配置创建完成"
+}
+
 
 install_filebrowser() {
     FILEBROWSER_DB_DIR="/etc/filebrowser"
