@@ -94,7 +94,7 @@ install_openlitespeed() {
 
     # 安装 OpenLiteSpeed 和 PHP 81 相关模块
     install_package "openlitespeed"
-    
+
     install_package "lsphp81 lsphp81-common lsphp81-mysqlnd"
 
     sudo systemctl enable lsws --now || { echo "❌ Failed to enable/start OpenLiteSpeed service"; exit 1; }
@@ -216,6 +216,9 @@ uninstall() {
     echo "🗑️ 开始卸载..."
 
     sudo systemctl stop lsws
+    $REMOVE_CMD openlitespeed
+    $REMOVE_CMD filebrowser
+    $REMOVE_CMD lsphp81 lsphp81-common lsphp81-mysqlnd
     sudo rm -rf /usr/local/lsws
 
     if [ "$PACKAGE_MANAGER" = "apt" ]; then
@@ -248,12 +251,12 @@ uninstall() {
         $FIREWALL_CMD --reload
     fi
 
-    echo "✅ 卸载完成！"
+    echo "✅ uninstall completed successfully!"
 }
 #================== Execute Deployment ==================
 # 主程序入口
 case "$1" in
-    deploy)
+    install)
         deploy
         ;;
     uninstall)
