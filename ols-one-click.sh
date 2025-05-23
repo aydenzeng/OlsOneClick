@@ -94,6 +94,7 @@ install_openlitespeed() {
 
     # 安装 OpenLiteSpeed 和 PHP 81 相关模块
     install_package "openlitespeed"
+    
     install_package "lsphp81 lsphp81-common lsphp81-mysqlnd"
 
     sudo systemctl enable lsws --now || { echo "❌ Failed to enable/start OpenLiteSpeed service"; exit 1; }
