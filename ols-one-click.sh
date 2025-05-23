@@ -298,6 +298,6 @@ case "$1" in
         uninstall
         ;;
     *)
-        echo "用法: $0 {install|uninstall|resetAdminPass|status}"
+        echo "用法: $0 {install|uninstall|resetAdminPass|status|update}"
         ;;
 esac
