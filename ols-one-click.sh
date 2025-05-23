@@ -253,9 +253,21 @@ uninstall() {
 
     echo "✅ uninstall completed successfully!"
 }
+updateScript() {
+    echo "🔄 Updating script..."
+    #备份当前脚本
+    cp -f ./ols-one-click.sh ./ols-one-click.sh.bak
+    #下载最新脚本
+    curl -O https://raw.githubusercontent.com/aydenzeng/OlsOneClick/main/ols-one-click.sh || wget https://raw.githubusercontent.com/aydenzeng/OlsOneClick/main/ols-one-click.sh && chmod +x ./ols-one-click.sh
+    echo "✅ Script updated successfully!"
+}
 #================== Execute Deployment ==================
 # 主程序入口
 case "$1" in
+    update)
+        echo "🔄 Updating system and tools..."
+        updateScript
+        ;;
     status)
         #检查lsws服务状态
         if systemctl is-active --quiet lsws; then
