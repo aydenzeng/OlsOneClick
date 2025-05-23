@@ -157,17 +157,30 @@ install_wordpress() {
 }
 
 install_filebrowser() {
+    FILEBROWSER_DB_DIR="/etc/filebrowser"
+    FILEBROWSER_DB_FILE="$FILEBROWSER_DB_DIR/filebrowser.db"
+    FILEBROWSER_PORT=8081
+
     echo "📁 Installing Filebrowser..."
     curl -fsSL https://raw.githubusercontent.com/filebrowser/get/master/get.sh | bash
-    sudo mkdir -p /etc/filebrowser
+    
+    echo "📂 Creating Filebrowser config directory and setting permissions..."
+    sudo mkdir -p "$FILEBROWSER_DB_DIR"
+    sudo chown -R "$WEBSERVER_USER":"$WEBSERVER_USER" "$FILEBROWSER_DB_DIR"
+    sudo chmod 700 "$FILEBROWSER_DB_DIR"
 
+    echo "📂 Setting permissions for WEB_ROOT ($WEB_ROOT)..."
+    sudo chown -R "$WEBSERVER_USER":"$WEBSERVER_USER" "$WEB_ROOT"
+    sudo chmod -R 755 "$WEB_ROOT"
+
+    echo "⚙️ Creating systemd service file for Filebrowser..."
     sudo tee /etc/systemd/system/filebrowser.service > /dev/null <<EOF
 [Unit]
 Description=Filebrowser
 After=network.target
 
 [Service]
-ExecStart=/usr/local/bin/filebrowser -r $WEB_ROOT -p 8081 --address 0.0.0.0 -d /etc/filebrowser/filebrowser.db
+ExecStart=/usr/local/bin/filebrowser -r $WEB_ROOT -p $FILEBROWSER_PORT --address 0.0.0.0 -d $FILEBROWSER_DB_FILE
 Restart=always
 User=$WEBSERVER_USER
 Group=$WEBSERVER_USER
@@ -176,7 +189,10 @@ Group=$WEBSERVER_USER
 WantedBy=multi-user.target
 EOF
 
-    sudo systemctl daemon-reexec
+    echo "🔄 Reloading systemd daemon..."
+    sudo systemctl daemon-reload
+
+    echo "🚀 Enabling and starting Filebrowser service..."
     sudo systemctl enable filebrowser --now
 }
 
