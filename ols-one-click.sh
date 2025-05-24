@@ -152,21 +152,14 @@ install_wordpress() {
     rm -f "$PLUGIN_DIR/litespeed-cache.zip"
 }
 
-create_wordpress_vhost() {
-    echo "⚙️ Create OpenLiteSpeed WordPress Vhost Config..."
+generate_vhost_config() {
+    local doc_root="$1"
+    local vhost_conf="$2"
+    local vhost_root="$3"
 
-    # 虚拟主机配置文件路径
-    VHOST_CONF="/usr/local/lsws/conf/vhosts/wordpress/vhost.conf"
-    VHOST_ROOT="$WEB_ROOT/wordpress"
-
-    # 创建虚拟主机目录（如果不存在）
-    sudo mkdir -p "$(dirname "$VHOST_CONF")"
-
-    # 写入虚拟主机配置内容
-    sudo tee "$VHOST_CONF" > /dev/null <<EOF
-docRoot                   $VHOST_ROOT
-vhRoot                    /usr/local/lsws/conf/vhosts/wordpress
-configFile                $VHOST_CONF
+    sudo tee "$vhost_conf" > /dev/null <<EOF
+docRoot                   $doc_root
+vhRoot                    $vhost_root
 allowSymbolLink           1
 enableScript              1
 restrained                0
@@ -176,7 +169,7 @@ index  {
 }
 extProcessor php {
   type                    lsapi
-  address                 uds://tmp/lshttpd/lsphp.sock
+  address                 uds:///tmp/lshttpd/lsphp.sock
   maxConns                35
   env                     PHP_LSAPI_MAX_REQUESTS=500
   initTimeout             60
@@ -209,14 +202,61 @@ accessControl {
   allow                   ALL
 }
 EOF
+}
 
-    # 修改默认主机配置文件，使用这个wordpress虚拟主机
-    sudo sed -i "s|/usr/local/lsws/DEFAULT|$VHOST_ROOT|g" /usr/local/lsws/conf/httpd_config.conf
+add_listener_port() {
+    local site_name="$1"
+    local site_port="$2"
+    local httpd_conf="/usr/local/lsws/conf/httpd_config.conf"
 
+    if grep -q "listener WordPress_$site_port" "$httpd_conf"; then
+        echo "ℹ️ Listener WordPress_$site_port 已存在，跳过添加"
+        return
+    fi
+
+    echo "📌 添加 Listener WordPress_$site_port 到 httpd_config.conf"
+    sudo tee -a "$httpd_conf" > /dev/null <<EOF
+
+listener WordPress_$site_port {
+  address                 *:$site_port
+  secure                  0
+  vhList                  $site_name
+}
+EOF
+}
+
+
+create_wordpress_vhost() {
+    echo "⚙️ Create OpenLiteSpeed WordPress Vhost Config..."
+    SITE_NAME="$1"
+    SITE_PORT="$2"
+    # 虚拟主机配置文件路径
+    DOC_ROOT="$WEB_ROOT/$SITE_NAME"
+    VHOST_ROOT="/usr/local/lsws/conf/vhosts/$SITE_NAME"
+    VHOST_CONF="$VHOST_ROOT/vhost.conf"
+
+    if [ -f "$VHOST_CONF" ]; then
+    echo "⚠️ 检测到已有虚拟主机配置，是否覆盖？(y/n)"
+    read -r CONFIRM
+    [ "$CONFIRM" != "y" ] && return
+    fi
+    # 创建虚拟主机目录（如果不存在）
+    sudo mkdir -p "$(dirname "$VHOST_CONF")"
+
+    generate_vhost_config "$DOC_ROOT" "$VHOST_CONF" "$VHOST_ROOT"
+
+    # 添加监听端口
+    add_listener_port "$SITE_NAME" "$SITE_PORT"
+
+    /usr/local/lsws/bin/lswsctrl restart || {
+        echo "❌ OpenLiteSpeed 配置错误，重启失败，请检查 vhost.conf"
+        exit 1
+    }
     # 重启服务应用配置
     sudo systemctl restart lsws
 
-    echo "✅ WordPress 虚拟主机配置创建完成"
+    echo "✅ WordPress 虚拟主机配置完成：$SITE_NAME"
+    echo "🌐 访问地址：http://$SERVER_IP:$SITE_PORT"
 }
 
 
@@ -265,8 +305,8 @@ show_info() {
     cat <<EOF | tee $INFO_FILE
 
 ==================== Deployment Summary ====================
-✅ WordPress Site Path:        $WEB_ROOT/wordpress
-🌐 WordPress Access URL:      http://$SERVER_IP or https://$SERVER_IP
+✅ Site Root Path:            $WEB_ROOT
+🌐 Access URL:                http://$SERVER_IP or https://$SERVER_IP
 🔐 Database Name:             $DB_NAME
 👤 Database User:             $DB_USER
 🔑 Database Password:         $DB_PASSWORD
@@ -286,7 +326,6 @@ deploy() {
     install_filebrowser
     install_openlitespeed
     install_database
-    install_wordpress
     open_ports
     show_info
     echo -e "\n✅ Deployment completed successfully! Info saved to $INFO_FILE"
@@ -371,6 +410,18 @@ case "$1" in
     resetAdminPass)
         sudo /usr/local/lsws/admin/misc/admpass.sh
         ;;
+    installWithWp)
+        SITENAME="$2"
+        SITEPORT="$3"
+        if [ -z "$SITENAME" ]; then
+            read -rp "Input Site Name (eg. mysite): " SITENAME
+        fi
+        if [ -z "$SITEPORT" ]; then
+            read -rp "Input Site Port (eg. 8080): " SITEPORT
+        fi
+        echo "🚀 Starting deployment with WordPress: $SITENAME on port $SITEPORT..."
+        install_wordpress "$SITENAME" "$SITEPORT"
+        ;;
     install)
         deploy
         ;;
@@ -378,6 +429,6 @@ case "$1" in
         uninstall
         ;;
     *)
-        echo "用法: $0 {install|uninstall|resetAdminPass|status|update}"
+        echo "Usage: $0 {install|uninstall|resetAdminPass|status|update|installWithWp}"
         ;;
 esac
