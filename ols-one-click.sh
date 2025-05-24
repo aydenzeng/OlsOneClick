@@ -332,7 +332,7 @@ deploy() {
 }
 # 卸载函数
 uninstall() {
-    echo "🗑️ 开始卸载..."
+    echo "🗑️ Start Uninstall..."
 
     sudo systemctl stop lsws
     $REMOVE_CMD openlitespeed
