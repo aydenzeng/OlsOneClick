@@ -26,6 +26,11 @@ else
 fi
 
 SERVER_IP=$(hostname -I | awk '{print $1}')
+# 创建 OpenLiteSpeed 用户和组
+if ! id -u "$WEBSERVER_USER" &>/dev/null; then
+    echo "👤 Creating web server user: $WEBSERVER_USER"
+    sudo useradd -r -s /bin/false "$WEBSERVER_USER"
+fi
 
 #================== Function Definitions ==================
 
@@ -95,6 +100,16 @@ install_openlitespeed() {
 
     install_package "lsphp81 lsphp81-common lsphp81-mysqlnd"
 
+    # 创建 OpenLiteSpeed 用户和组
+    if ! id -u "$WEBSERVER_USER" &>/dev/null; then
+        echo "👤 Creating web server user: $WEBSERVER_USER"
+        sudo useradd -r -s /bin/false "$WEBSERVER_USER"
+    fi
+    # 设置 OpenLiteSpeed 的用户和组
+    sudo sed -i "s/^user\s.*/user $WEBSERVER_USER/" /usr/local/lsws/conf/httpd_config.conf
+    sudo sed -i "s/^group\s.*/group $WEBSERVER_USER/" /usr/local/lsws/conf/httpd_config.conf
+
+
     sudo systemctl enable lsws --now || { echo "❌ Failed to enable/start OpenLiteSpeed service"; exit 1; }
 
     open_ports
@@ -102,55 +117,132 @@ install_openlitespeed() {
     echo "✅ OpenLiteSpeed installation completed"
 }
 
-
-
 install_database() {
     echo "🗄️ Installing database service..."
+
     if [ "$PACKAGE_MANAGER" = "apt" ]; then
         $INSTALL_CMD mysql-server
         sudo systemctl enable mysql --now
-        sudo mysql_secure_installation
+        SERVICE_NAME="mysql"
     else
         $INSTALL_CMD mariadb-server
         sudo systemctl enable mariadb --now
-        sudo mysql_secure_installation
+        SERVICE_NAME="mariadb"
     fi
 
-    echo "🧰 Creating database and user..."
-    sudo mysql <<EOF
-CREATE DATABASE IF NOT EXISTS $DB_NAME;
-CREATE USER IF NOT EXISTS '$DB_USER'@'localhost' IDENTIFIED BY '$DB_PASSWORD';
-GRANT ALL PRIVILEGES ON $DB_NAME.* TO '$DB_USER'@'localhost';
+    echo "🔧 Generating a random root password for MySQL..."
+
+    MYSQL_ROOT_PASSWORD=$(openssl rand -base64 12)
+    echo "Generated MySQL root password: $MYSQL_ROOT_PASSWORD"
+
+    echo "🔧 Securing database installation (no interaction)..."
+
+    SECURE_SQL=$(cat <<-EOSQL
+ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '${MYSQL_ROOT_PASSWORD}';
+DELETE FROM mysql.user WHERE User='';
+DELETE FROM mysql.user WHERE User='root' AND Host NOT IN ('localhost', '127.0.0.1', '::1');
+DROP DATABASE IF EXISTS test;
+DELETE FROM mysql.db WHERE Db='test' OR Db='test\\_%';
 FLUSH PRIVILEGES;
-EOF
+EOSQL
+    )
+
+    sudo mysql -e "$SECURE_SQL"
+
+    echo "🧰 Creating database and user..."
+
+    CREATE_USER_SQL=$(cat <<-EOSQL
+CREATE DATABASE IF NOT EXISTS \`$DB_NAME\`;
+CREATE USER IF NOT EXISTS '$DB_USER'@'localhost' IDENTIFIED BY '$DB_PASSWORD';
+GRANT ALL PRIVILEGES ON \`$DB_NAME\`.* TO '$DB_USER'@'localhost';
+FLUSH PRIVILEGES;
+EOSQL
+    )
+
+    sudo mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -e "$CREATE_USER_SQL"
+
+    echo "✅ Database installation and initialization complete."
+    echo "🔐 Remember to save your MySQL root password: $MYSQL_ROOT_PASSWORD"
 }
 
+
+
+
 install_wordpress() {
+    local SITE_NAME="$1"     # WordPress 站点目录名，例如 blog1
+    local PORT="$2"          # 虚拟主机端口，例如 8081
+
+    # 自动生成数据库信息
+    local DB_NAME="wp_${SITE_NAME}"
+    local DB_USER="user_${SITE_NAME}"
+    local DB_PASSWORD=$(openssl rand -hex 8)  # 随机密码
+
+    local SITE_DIR="$WEB_ROOT/$SITE_NAME"
+
     echo "⬇️ Downloading and configuring WordPress..."
     wget -q https://wordpress.org/latest.tar.gz
     tar -xzf latest.tar.gz && rm -f latest.tar.gz
 
-    sudo rm -rf $WEB_ROOT/wordpress
-    sudo mv wordpress $WEB_ROOT
-    sudo chown -R $WEBSERVER_USER:$WEBSERVER_USER $WEB_ROOT/wordpress
-    sudo find $WEB_ROOT/wordpress -type d -exec chmod 755 {} \;
-    sudo find $WEB_ROOT/wordpress -type f -exec chmod 644 {} \;
+    sudo rm -rf "$SITE_DIR"
+    sudo mv wordpress "$SITE_DIR"
+    sudo chown -R "$WEBSERVER_USER:$WEBSERVER_USER" "$SITE_DIR"
+    sudo find "$SITE_DIR" -type d -exec chmod 755 {} \;
+    sudo find "$SITE_DIR" -type f -exec chmod 644 {} \;
 
-    sudo cp $WEB_ROOT/wordpress/wp-config-sample.php $WEB_ROOT/wordpress/wp-config.php
-    sudo sed -i "s/database_name_here/$DB_NAME/" $WEB_ROOT/wordpress/wp-config.php
-    sudo sed -i "s/username_here/$DB_USER/" $WEB_ROOT/wordpress/wp-config.php
-    sudo sed -i "s/password_here/$DB_PASSWORD/" $WEB_ROOT/wordpress/wp-config.php
+    sudo cp "$SITE_DIR/wp-config-sample.php" "$SITE_DIR/wp-config.php"
+    sudo sed -i "s/database_name_here/$DB_NAME/" "$SITE_DIR/wp-config.php"
+    sudo sed -i "s/username_here/$DB_USER/" "$SITE_DIR/wp-config.php"
+    sudo sed -i "s/password_here/$DB_PASSWORD/" "$SITE_DIR/wp-config.php"
 
-    create_wordpress_vhost  # 这里调用创建虚拟主机
+    create_wordpress_vhost "$SITE_NAME" "$PORT" # 这里调用创建虚拟主机
 
-    echo "📦 Installing LiteSpeed Cache plugin..."
-    PLUGIN_DIR="$WEB_ROOT/wordpress/wp-content/plugins"
+    echo "📦 Installing LiteSpeed Cache plugin for $SITE_NAME..."
+    PLUGIN_DIR="$SITE_DIR/wp-content/plugins"
     mkdir -p "$PLUGIN_DIR"
     wget -q -O "$PLUGIN_DIR/litespeed-cache.zip" https://downloads.wordpress.org/plugin/litespeed-cache.4.4.1.zip
     sudo unzip "$PLUGIN_DIR/litespeed-cache.zip" -d "$PLUGIN_DIR"
-    sudo chown -R $WEBSERVER_USER:$WEBSERVER_USER "$PLUGIN_DIR/litespeed-cache"
+    sudo chown -R "$WEBSERVER_USER:$WEBSERVER_USER" "$PLUGIN_DIR/litespeed-cache"
     rm -f "$PLUGIN_DIR/litespeed-cache.zip"
+
+    echo "✅ WordPress installed for $SITE_NAME"
+    echo "🔐 Database: $DB_NAME"
+    echo "👤 DB User: $DB_USER"
+    echo "🔑 DB Pass: $DB_PASSWORD"
 }
+
+register_virtual_host() {
+    local site_name="$1"
+    local vhost_root="$2"
+    local vhost_conf="$3"
+
+    # 创建 vhconf.xml（如果有必要）
+    sudo tee "$vhost_root/vhconf.xml" > /dev/null <<EOF
+<vhConf>
+  <docRoot>$doc_root</docRoot>
+  <domain>$site_name</domain>
+</vhConf>
+EOF
+
+    # 添加到主配置文件（如果尚未存在）
+    local httpd_conf="/usr/local/lsws/conf/httpd_config.conf"
+    if ! grep -q "vhRoot.*$site_name" "$httpd_conf"; then
+        echo "📌 添加虚拟主机 $site_name 到主配置文件"
+        sudo tee -a "$httpd_conf" > /dev/null <<EOF
+
+virtualHost $site_name {
+  vhRoot                  $vhost_root
+  configFile              $vhost_conf
+  allowSymbolLink         1
+  enableScript            1
+}
+EOF
+    fi
+
+    echo "🔄 重启 OpenLiteSpeed 服务以应用配置..."
+    sudo systemctl restart lsws
+    echo "✅ 虚拟主机 $site_name 配置完成。访问地址：http://$SERVER_IP:$SITE_PORT"
+}
+
 
 generate_vhost_config() {
     local doc_root="$1"
@@ -220,9 +312,10 @@ add_listener_port() {
 listener WordPress_$site_port {
   address                 *:$site_port
   secure                  0
-  vhList                  $site_name
+  map                     $site_name $site_name
 }
 EOF
+    echo "✅ Listener 已添加，端口: $site_port"
 }
 
 
@@ -244,6 +337,8 @@ create_wordpress_vhost() {
     sudo mkdir -p "$(dirname "$VHOST_CONF")"
 
     generate_vhost_config "$DOC_ROOT" "$VHOST_CONF" "$VHOST_ROOT"
+
+    register_virtual_host "$SITE_NAME" "$VHOST_ROOT" "$VHOST_CONF"
 
     # 添加监听端口
     add_listener_port "$SITE_NAME" "$SITE_PORT"
