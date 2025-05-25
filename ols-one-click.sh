@@ -4,6 +4,7 @@
 DB_NAME="wordpress_db"
 DB_USER="wordpress_user"
 DB_PASSWORD=$(openssl rand -base64 12)
+MYSQL_ROOT_PASSWORD=$(openssl rand -base64 12) # 随机生成 MySQL root 密码
 WEB_ROOT="/var/www/html"
 INFO_FILE="deploy_info.txt"
 WEBSERVER_USER="www"
@@ -132,7 +133,6 @@ install_database() {
 
     echo "🔧 Generating a random root password for MySQL..."
 
-    MYSQL_ROOT_PASSWORD=$(openssl rand -base64 12)
     echo "Generated MySQL root password: $MYSQL_ROOT_PASSWORD"
 
     echo "🔧 Securing database installation (no interaction)..."
@@ -405,6 +405,7 @@ show_info() {
 🔐 Database Name:             $DB_NAME
 👤 Database User:             $DB_USER
 🔑 Database Password:         $DB_PASSWORD
+🔑 Database Root Password:    $MYSQL_ROOT_PASSWORD
 📁 Filebrowser URL:           http://$SERVER_IP:8081
 👤 Filebrowser Username:      admin
 🔑 Filebrowser Password:      admin
