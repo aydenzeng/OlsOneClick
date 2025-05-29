@@ -431,7 +431,7 @@ deploy() {
     install_filebrowser
     install_openlitespeed
     install_database
-    open_ports 22 80 443 7080 8081
+    open_ports 22 80 443 7080 8081 8088
     show_info
     echo -e "\n✅ Deployment completed successfully! Info saved to $INFO_FILE"
 }
@@ -515,6 +515,14 @@ case "$1" in
         ;;
     install)
         deploy
+        ;;
+    openPorts)
+        ports="$2"
+        if [ -z "$SITENAME" ]; then
+            read -rp "Input Site Name (eg. 80 8888 8889): " SITENAME
+        fi
+        open_ports $ports
+        echo "🌐 Opened ports: $ports"
         ;;
     version)
         version
