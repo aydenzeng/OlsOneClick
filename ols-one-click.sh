@@ -458,23 +458,6 @@ uninstall() {
     $REMOVE_CMD lsphp*
     eval "$AUTOREMOVE_CMD"
 
-    sudo rm -rf /var/www/html/wordpress
-
-    # 防火墙清理
-    echo "关闭防火墙端口..."
-    if [ "$PACKAGE_MANAGER" = "apt" ]; then
-        $FIREWALL_CMD delete allow 80
-        $FIREWALL_CMD delete allow 443
-        $FIREWALL_CMD delete allow 8081
-        $FIREWALL_CMD delete allow 7080
-    else
-        $FIREWALL_CMD --permanent --remove-port=80/tcp
-        $FIREWALL_CMD --permanent --remove-port=443/tcp
-        $FIREWALL_CMD --permanent --remove-port=7080/tcp
-        $FIREWALL_CMD --permanent --remove-port=8081/tcp
-        $FIREWALL_CMD --reload
-    fi
-
     echo "✅ uninstall completed successfully!"
 }
 updateScript() {
