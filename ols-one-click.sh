@@ -51,16 +51,21 @@ fix_libcrypt() {
         echo "✅ libcrypt.so.1 found"
     fi
 }
-
 open_ports() {
     echo "🌐 Configuring firewall..."
+    local ports=("$@")  # 获取所有传入的端口参数
+
     if [ "$PACKAGE_MANAGER" = "apt" ]; then
-        sudo ufw status | grep -q inactive && sudo ufw enable
-        for port in 22 80 443 7080 8081; do $FIREWALL_CMD allow $port; done
+        sudo ufw status | grep -q inactive && sudo ufw --force enable
+        for port in "${ports[@]}"; do
+            sudo ufw allow "$port"
+        done
     else
         sudo systemctl enable firewalld --now
-        for port in 22 80 443 7080 8081; do $FIREWALL_CMD --permanent --add-port=${port}/tcp; done
-        $FIREWALL_CMD --reload
+        for port in "${ports[@]}"; do
+            sudo firewall-cmd --permanent --add-port="${port}/tcp"
+        done
+        sudo firewall-cmd --reload
     fi
 }
 
@@ -113,7 +118,7 @@ install_openlitespeed() {
 
     sudo systemctl enable lsws --now || { echo "❌ Failed to enable/start OpenLiteSpeed service"; exit 1; }
 
-    open_ports
+    open_ports 22 80 443 7080 8081
 
     echo "✅ OpenLiteSpeed installation completed"
 }
@@ -350,6 +355,9 @@ create_wordpress_vhost() {
     # 重启服务应用配置
     sudo systemctl restart lsws
 
+    # 打开必要的端口
+    open_ports "$SITE_PORT"
+
     echo "✅ WordPress 虚拟主机配置完成：$SITE_NAME"
     echo "🌐 访问地址：http://$SERVER_IP:$SITE_PORT"
 }
@@ -422,7 +430,7 @@ deploy() {
     install_filebrowser
     install_openlitespeed
     install_database
-    open_ports
+    open_ports 22 80 443 7080 8081
     show_info
     echo -e "\n✅ Deployment completed successfully! Info saved to $INFO_FILE"
 }
