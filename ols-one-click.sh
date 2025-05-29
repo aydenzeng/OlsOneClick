@@ -1,5 +1,5 @@
 #!/bin/bash
-
+VERSION="1.1.0"
 #================= Configuration Variables =================
 DB_NAME="wordpress_db"
 DB_USER="wordpress_user"
@@ -214,7 +214,7 @@ register_virtual_host() {
     local site_name="$1"
     local vhost_root="$2"
     local vhost_conf="$3"
-
+    local doc_root="$WEB_ROOT/$site_name"
     # 创建 vhconf.xml（如果有必要）
     sudo tee "$vhost_root/vhconf.xml" > /dev/null <<EOF
 <vhConf>
@@ -230,7 +230,7 @@ EOF
         sudo tee -a "$httpd_conf" > /dev/null <<EOF
 
 virtualHost $site_name {
-  vhRoot                  $vhost_root
+  vhRoot                  $doc_root
   configFile              $vhost_conf
   allowSymbolLink         1
   enableScript            1
@@ -476,6 +476,9 @@ updateScript() {
     curl -O https://raw.githubusercontent.com/aydenzeng/OlsOneClick/main/ols-one-click.sh || wget https://raw.githubusercontent.com/aydenzeng/OlsOneClick/main/ols-one-click.sh && chmod +x ./ols-one-click.sh
     echo "✅ Script updated successfully!"
 }
+version(){
+    echo "$VERSION"
+}
 #================== Execute Deployment ==================
 # 主程序入口
 case "$1" in
@@ -521,10 +524,13 @@ case "$1" in
     install)
         deploy
         ;;
+    version)
+        version
+        ;;
     uninstall)
         uninstall
         ;;
     *)
-        echo "Usage: $0 {install|uninstall|resetAdminPass|status|update|installWithWp}"
+        echo "Usage: $0 {install|uninstall|resetAdminPass|status|update|installWithWp|version}"
         ;;
 esac
