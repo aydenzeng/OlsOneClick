@@ -198,7 +198,7 @@ install_wordpress() {
     sudo sed -i "s/database_name_here/$DB_NAME/" "$SITE_DIR/wp-config.php"
     sudo sed -i "s/username_here/$DB_USER/" "$SITE_DIR/wp-config.php"
     sudo sed -i "s/password_here/$DB_PASSWORD/" "$SITE_DIR/wp-config.php"
-    
+
     sudo chown "$WEBSERVER_USER:$WEBSERVER_USER" "$SITE_DIR/wp-config.php"
 
     create_wordpress_vhost "$SITE_NAME" "$PORT" # 这里调用创建虚拟主机
@@ -305,6 +305,7 @@ add_listener_port() {
     local site_name="$1"
     local site_port="$2"
     local httpd_conf="/usr/local/lsws/conf/httpd_config.conf"
+    local domain="*"
 
     if grep -q "listener WordPress_$site_port" "$httpd_conf"; then
         echo "ℹ️ Listener WordPress_$site_port 已存在，跳过添加"
@@ -317,7 +318,7 @@ add_listener_port() {
 listener WordPress_$site_port {
   address                 *:$site_port
   secure                  0
-  map                     $site_name $site_name
+  map                     $site_name $domain
 }
 EOF
     echo "✅ Listener 已添加，端口: $site_port"
