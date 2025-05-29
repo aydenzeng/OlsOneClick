@@ -198,6 +198,8 @@ install_wordpress() {
     sudo sed -i "s/database_name_here/$DB_NAME/" "$SITE_DIR/wp-config.php"
     sudo sed -i "s/username_here/$DB_USER/" "$SITE_DIR/wp-config.php"
     sudo sed -i "s/password_here/$DB_PASSWORD/" "$SITE_DIR/wp-config.php"
+    
+    sudo chown "$WEBSERVER_USER:$WEBSERVER_USER" "$SITE_DIR/wp-config.php"
 
     create_wordpress_vhost "$SITE_NAME" "$PORT" # 这里调用创建虚拟主机
 
