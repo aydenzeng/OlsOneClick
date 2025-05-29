@@ -220,13 +220,6 @@ register_virtual_host() {
     local vhost_root="$2"
     local vhost_conf="$3"
     local doc_root="$WEB_ROOT/$site_name"
-    # 创建 vhconf.xml（如果有必要）
-    sudo tee "$vhost_root/vhconf.xml" > /dev/null <<EOF
-<vhConf>
-  <docRoot>$doc_root</docRoot>
-  <domain>$site_name</domain>
-</vhConf>
-EOF
 
     # 添加到主配置文件（如果尚未存在）
     local httpd_conf="/usr/local/lsws/conf/httpd_config.conf"
@@ -256,6 +249,7 @@ generate_vhost_config() {
 
     sudo tee "$vhost_conf" > /dev/null <<EOF
 docRoot                   $doc_root
+vhDomain                  $SERVER_IP
 vhRoot                    $vhost_root
 allowSymbolLink           1
 enableScript              1
@@ -299,6 +293,10 @@ accessControl {
   allow                   ALL
 }
 EOF
+# 修改vhost_root目录下的所有文件为 lsadm:www
+sudo chown -R "lsadm":"$WEBSERVER_USER" "$vhost_root"
+sudo chmod -R 755 "$vhost_root"
+
 }
 
 add_listener_port() {
