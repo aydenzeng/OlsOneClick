@@ -81,6 +81,17 @@ update_sys_tools() {
     fix_libcrypt
 }
 
+install_phpmyadmin(){
+    cd /usr/local/lsws/Example/html
+    wget -q https://www.phpmyadmin.net/downloads/phpMyAdmin-latest-all-languages.zip
+    unzip phpMyAdmin-latest-all-languages.zip
+    rm phpMyAdmin-latest-all-languages.zip
+    mv phpMyAdmin-*-all-languages phpmyadmin
+    mv phpmyadmin/config.sample.inc.php phpmyadmin/config.inc.php
+    echo "Success installed phpMyAdmin..."
+    echo "http://$SERVER_IP:8088/phpmyadmin/index.php"
+}
+
 install_openlitespeed() {
     echo "📦 Installing OpenLiteSpeed..."
 
@@ -520,6 +531,12 @@ case "$1" in
     install)
         deploy
         ;;
+    installPhpMyAdmin)
+        install_phpmyadmin
+        ;;
+    logs)
+        tail -f /usr/local/lsws/logs/error.log
+        ;;
     openPorts)
         ports="$2"
         if [ -z "$SITENAME" ]; then
@@ -535,6 +552,6 @@ case "$1" in
         uninstall
         ;;
     *)
-        echo "Usage: $0 {install|uninstall|resetAdminPass|status|update|installWithWp|version|openPorts}"
+        echo "Usage: $0 {install|uninstall|resetAdminPass|status|update|installWithWp|version|openPorts|logs|installPhpMyAdmin}"
         ;;
 esac
