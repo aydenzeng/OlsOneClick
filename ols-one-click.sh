@@ -423,47 +423,6 @@ create_wordpress_vhost() {
     echo "🌐 访问地址：http://$SERVER_IP:$SITE_PORT"
 }
 
-
-install_filebrowser() {
-    FILEBROWSER_DB_DIR="/etc/filebrowser"
-    FILEBROWSER_DB_FILE="$FILEBROWSER_DB_DIR/filebrowser.db"
-    FILEBROWSER_PORT=8081
-
-    echo "📁 Installing Filebrowser..."
-    curl -fsSL https://raw.githubusercontent.com/filebrowser/get/master/get.sh | bash
-    
-    echo "📂 Creating Filebrowser config directory and setting permissions..."
-    sudo mkdir -p "$FILEBROWSER_DB_DIR"
-    sudo chown -R "$WEBSERVER_USER":"$WEBSERVER_USER" "$FILEBROWSER_DB_DIR"
-    sudo chmod 700 "$FILEBROWSER_DB_DIR"
-
-    echo "📂 Setting permissions for WEB_ROOT ($WEB_ROOT)..."
-    sudo chown -R "$WEBSERVER_USER":"$WEBSERVER_USER" "$WEB_ROOT"
-    sudo chmod -R 755 "$WEB_ROOT"
-
-    echo "⚙️ Creating systemd service file for Filebrowser..."
-    sudo tee /etc/systemd/system/filebrowser.service > /dev/null <<EOF
-[Unit]
-Description=Filebrowser
-After=network.target
-
-[Service]
-ExecStart=/usr/local/bin/filebrowser -r $WEB_ROOT -p $FILEBROWSER_PORT --address 0.0.0.0 -d $FILEBROWSER_DB_FILE
-Restart=always
-User=$WEBSERVER_USER
-Group=$WEBSERVER_USER
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-    echo "🔄 Reloading systemd daemon..."
-    sudo systemctl daemon-reload
-
-    echo "🚀 Enabling and starting Filebrowser service..."
-    sudo systemctl enable filebrowser --now
-}
-
 show_info() {
     echo -e "\n📄 Writing deployment info..."
     cat <<EOF | tee $INFO_FILE
@@ -475,10 +434,7 @@ show_info() {
 👤 Database User:             $DB_USER
 🔑 Database Password:         $DB_PASSWORD
 🔑 Database Root Password:    $MYSQL_ROOT_PASSWORD
-📁 Filebrowser URL:           http://$SERVER_IP:8081
-👤 Filebrowser Username:      admin
-🔑 Filebrowser Password:      admin
-🧱 Opened Ports:              22, 80, 443, 7080, 8081
+🧱 Opened Ports:              22, 80, 443, 7080
 🚀 OLS Admin Panel:           https://$SERVER_IP:7080 (Default user: admin. Set password at first login.)
 ⚙️ LiteSpeed Cache Plugin:    $WEB_ROOT/wordpress/wp-content/plugins/litespeed-cache
 ============================================================
@@ -488,10 +444,9 @@ EOF
 deploy() {
     echo "🚀 Starting deployment..."
     update_sys_tools
-    install_filebrowser
     install_openlitespeed
     install_database
-    open_ports 22 80 443 7080 8081 8088
+    open_ports 22 80 443 7080 8088
     show_info
     echo -e "\n✅ Deployment completed successfully! Info saved to $INFO_FILE"
 }
@@ -545,12 +500,6 @@ case "$1" in
         else
             echo "❌ OpenLiteSpeed is not running."
         fi
-        #检查Filebrowser服务状态
-        if systemctl is-active --quiet filebrowser; then
-            echo "✅ Filebrowser is running."
-        else
-            echo "❌ Filebrowser is not running."
-        fi
         #检查数据库服务状态
         if systemctl is-active --quiet mysql; then
             echo "✅ Database service is running."
@@ -561,7 +510,7 @@ case "$1" in
     resetAdminPass)
         sudo /usr/local/lsws/admin/misc/admpass.sh
         ;;
-    create_db_user)
+    createDbUser)
         create_mariadb_user
         ;;
     installWithWp)
@@ -600,6 +549,6 @@ case "$1" in
         uninstall
         ;;
     *)
-        echo "Usage: $0 {install|uninstall|resetAdminPass|status|update|installWithWp|version|openPorts|logs|installPhpMyAdmin|create_db_user}"
+        echo "Usage: $0 {install|uninstall|resetAdminPass|status|update|installWithWp|version|openPorts|logs|installPhpMyAdmin|createDbUser}"
         ;;
 esac
