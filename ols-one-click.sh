@@ -1,5 +1,5 @@
 #!/bin/bash
-VERSION="1.1.1"
+VERSION="1.1.2"
 #================= Configuration Variables =================
 DB_NAME="wordpress_db"
 DB_USER="wordpress_user"
@@ -118,7 +118,11 @@ install_openlitespeed() {
 
     sudo systemctl enable lsws --now || { echo "❌ Failed to enable/start OpenLiteSpeed service"; exit 1; }
 
-    open_ports 22 80 443 7080 8081
+    open_ports 22 80 443 7080 8081 8088
+
+    sudo mkdir -p /tmp/lshttpd
+    sudo chown -R "$WEBSERVER_USER":"$WEBSERVER_USER" /tmp/lshttpd
+    sudo chmod 755 /tmp/lshttpd
 
     echo "✅ OpenLiteSpeed installation completed"
 }
@@ -531,6 +535,6 @@ case "$1" in
         uninstall
         ;;
     *)
-        echo "Usage: $0 {install|uninstall|resetAdminPass|status|update|installWithWp|version}"
+        echo "Usage: $0 {install|uninstall|resetAdminPass|status|update|installWithWp|version|openPorts}"
         ;;
 esac
