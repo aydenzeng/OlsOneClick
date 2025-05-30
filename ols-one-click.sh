@@ -186,6 +186,51 @@ EOSQL
 }
 
 
+create_mariadb_user() {
+  read -p "Enter database name: " dbname
+  read -p "Enter username: " dbuser
+  read -s -p "Enter password: " dbpass
+  echo
+  read -s -p "Confirm password: " dbpass_confirm
+  echo
+
+  if [ "$dbpass" != "$dbpass_confirm" ]; then
+    echo "❌ Passwords do not match. Aborting."
+    return 1
+  fi
+
+  # 使用 sudo 检查数据库是否存在（无需密码）
+  db_exists=$(sudo mysql -N -e "SELECT COUNT(*) FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME = '${dbname}'" 2>/dev/null)
+
+  if [ "$db_exists" -eq 0 ]; then
+    # 数据库不存在，创建它
+    sudo mysql <<EOF
+CREATE DATABASE IF NOT EXISTS \`${dbname}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
+CREATE USER IF NOT EXISTS '${dbuser}'@'localhost' IDENTIFIED BY '${dbpass}';
+GRANT ALL PRIVILEGES ON \`${dbname}\`.* TO '${dbuser}'@'localhost';
+FLUSH PRIVILEGES;
+EOF
+    if [ $? -eq 0 ]; then
+      echo "✅ Database '${dbname}' and user '${dbuser}' created and granted privileges successfully."
+    else
+      echo "❌ Operation failed. Please check if MariaDB is running and your sudo privileges are correct."
+      return 1
+    fi
+  else
+    # 数据库已存在，只创建用户
+    sudo mysql <<EOF
+CREATE USER IF NOT EXISTS '${dbuser}'@'localhost' IDENTIFIED BY '${dbpass}';
+GRANT ALL PRIVILEGES ON \`${dbname}\`.* TO '${dbuser}'@'localhost';
+FLUSH PRIVILEGES;
+EOF
+    if [ $? -eq 0 ]; then
+      echo "✅ User '${dbuser}' created and granted privileges to '${dbname}' successfully."
+    else
+      echo "❌ Operation failed. Please check if MariaDB is running and your sudo privileges are correct."
+      return 1
+    fi
+  fi
+}
 
 
 install_wordpress() {
@@ -516,6 +561,9 @@ case "$1" in
     resetAdminPass)
         sudo /usr/local/lsws/admin/misc/admpass.sh
         ;;
+    create_db_user)
+        create_mariadb_user
+        ;;
     installWithWp)
         SITENAME="$2"
         SITEPORT="$3"
@@ -552,6 +600,6 @@ case "$1" in
         uninstall
         ;;
     *)
-        echo "Usage: $0 {install|uninstall|resetAdminPass|status|update|installWithWp|version|openPorts|logs|installPhpMyAdmin}"
+        echo "Usage: $0 {install|uninstall|resetAdminPass|status|update|installWithWp|version|openPorts|logs|installPhpMyAdmin|create_db_user}"
         ;;
 esac
