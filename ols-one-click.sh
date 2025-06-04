@@ -82,10 +82,12 @@ update_sys_tools() {
 }
 
 install_phpmyadmin(){
+    local downUrl="https://files.phpmyadmin.net/snapshots/phpMyAdmin-6.0+snapshot-all-languages.zip"
     cd /usr/local/lsws/Example/html
-    wget -q https://www.phpmyadmin.net/downloads/phpMyAdmin-latest-all-languages.zip
-    unzip phpMyAdmin-latest-all-languages.zip
-    rm phpMyAdmin-latest-all-languages.zip
+    rm -rf phpmyadmin
+    wget -q $downUrl
+    unzip phpMyAdmin-6.0+snapshot-all-languages.zip
+    rm phpMyAdmin-6.0+snapshot-all-languages.zip
     mv phpMyAdmin-*-all-languages phpmyadmin
     mv phpmyadmin/config.sample.inc.php phpmyadmin/config.inc.php
     echo "Success installed phpMyAdmin..."
