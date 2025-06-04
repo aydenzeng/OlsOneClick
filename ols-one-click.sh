@@ -82,12 +82,15 @@ update_sys_tools() {
 }
 
 install_phpmyadmin(){
-    local downUrl="https://files.phpmyadmin.net/snapshots/phpMyAdmin-6.0+snapshot-all-languages.zip"
+    local PMA_VERSION="5.2.1"  # 可以根据需要修改版本
+    local downUrl="https://files.phpmyadmin.net/phpMyAdmin/${PMA_VERSION}/phpMyAdmin-${PMA_VERSION}-all-languages.zip"
     cd /usr/local/lsws/Example/html
     rm -rf phpmyadmin
     wget -q $downUrl
-    unzip phpMyAdmin-6.0+snapshot-all-languages.zip
-    rm phpMyAdmin-6.0+snapshot-all-languages.zip
+    # 解压和安装
+    unzip phpMyAdmin-${PMA_VERSION}-all-languages.zip
+    rm phpMyAdmin-${PMA_VERSION}-all-languages.zip
+    rm -rf phpmyadmin
     mv phpMyAdmin-*-all-languages phpmyadmin
     mv phpmyadmin/config.sample.inc.php phpmyadmin/config.inc.php
     echo "Success installed phpMyAdmin..."
