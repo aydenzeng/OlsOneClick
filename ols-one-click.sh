@@ -82,7 +82,7 @@ update_sys_tools() {
 }
 
 install_phpmyadmin(){
-    local PMA_VERSION="5.2.1"  # 可以根据需要修改版本
+    local PMA_VERSION="5.1.3"  # 可以根据需要修改版本
     local downUrl="https://files.phpmyadmin.net/phpMyAdmin/${PMA_VERSION}/phpMyAdmin-${PMA_VERSION}-all-languages.zip"
     cd /usr/local/lsws/Example/html
     rm -rf phpmyadmin
