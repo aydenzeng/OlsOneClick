@@ -81,6 +81,54 @@ update_sys_tools() {
     fix_libcrypt
 }
 
+# === 函数：编译并安装 OpenSSH ===
+install_openssh() {
+  set -e
+  local VERSION="9.7p1"
+  local WORKDIR="/usr/local/src"
+  local PREFIX="/usr"
+  local SYSCONFDIR="/etc/ssh"
+
+  echo "📦 安装构建依赖..."
+  yum install -y gcc make pam-devel zlib-devel openssl-devel wget tar
+
+  echo "⬇️ 下载 OpenSSH $VERSION..."
+  cd "$WORKDIR"
+  wget -O openssh.tar.gz "https://cdn.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-${VERSION}.tar.gz"
+  tar -xf openssh.tar.gz
+  cd "openssh-${VERSION}"
+
+  echo "🛡️ 备份 sshd 配置..."
+  cp -a /etc/ssh/sshd_config /etc/ssh/sshd_config.bak_$(date +%F_%T) || true
+
+  echo "⚙️ 开始配置..."
+  ./configure \
+    --prefix="$PREFIX" \
+    --sysconfdir="$SYSCONFDIR" \
+    --with-pam \
+    --with-md5-passwords \
+    --with-ssl-dir=/usr
+
+  echo "🔨 编译..."
+  make -j"$(nproc)"
+
+  echo "📥 安装..."
+  make install
+
+  echo "🔁 重启 sshd 服务..."
+  chmod 600 /etc/ssh/ssh_host_* 2>/dev/null || true
+  systemctl daemon-reexec
+  if systemctl is-active --quiet sshd; then
+    systemctl restart sshd
+  else
+    systemctl start sshd
+  fi
+
+  echo "✅ OpenSSH $VERSION 安装完成"
+  ssh -V
+}
+
+
 install_phpmyadmin(){
     local PMA_VERSION="5.1.3"  # 可以根据需要修改版本
     local downUrl="https://files.phpmyadmin.net/phpMyAdmin/${PMA_VERSION}/phpMyAdmin-${PMA_VERSION}-all-languages.zip"
@@ -535,6 +583,9 @@ case "$1" in
     install)
         deploy
         ;;
+    installOpenSSH)
+        install_openssh
+        ;;
     installPhpMyAdmin)
         install_phpmyadmin
         ;;
@@ -556,6 +607,6 @@ case "$1" in
         uninstall
         ;;
     *)
-        echo "Usage: $0 {install|uninstall|resetAdminPass|status|update|installWithWp|version|openPorts|logs|installPhpMyAdmin|createDbUser}"
+        echo "Usage: $0 {install|uninstall|resetAdminPass|status|update|installWithWp|version|openPorts|logs|installPhpMyAdmin|createDbUser|installOpenSSH}"
         ;;
 esac
