@@ -93,6 +93,8 @@ install_phpmyadmin(){
     rm -rf phpmyadmin
     mv phpMyAdmin-*-all-languages phpmyadmin
     mv phpmyadmin/config.sample.inc.php phpmyadmin/config.inc.php
+    chown -R $WEBSERVER_USER:$WEBSERVER_USER /usr/local/lsws/Example/html/phpmyadmin
+    chmod -R 755 /usr/local/lsws/Example/html/phpmyadmin
     echo "Success installed phpMyAdmin..."
     echo "http://$SERVER_IP:8088/phpmyadmin/index.php"
 }
