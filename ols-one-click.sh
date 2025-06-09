@@ -73,7 +73,7 @@ open_ports() {
 update_sys_tools() {
     echo "⬆️ Updating system and base tools..."
     if [ "$PACKAGE_MANAGER" = "apt" ]; then
-        sudo apt update && sudo apt upgrade -y
+        sudo apt update && sudo apt upgrade -y && sudo apt install ufw -y
     else
         sudo yum update -y
     fi
@@ -191,7 +191,7 @@ install_openlitespeed() {
     # sudo systemctl enable lsws --now || { echo "❌ Failed to enable/start OpenLiteSpeed service"; exit 1; }
     $LSWSCCTRL start || { echo "❌ Failed to enable/start OpenLiteSpeed service"; exit 1; }
 
-    open_ports 22 80 443 7080 8081 8088
+    open_ports 22 80 443 7080 8081 8088 3306
 
     sudo mkdir -p /tmp/lshttpd
     sudo chown -R "$WEBSERVER_USER":"$WEBSERVER_USER" /tmp/lshttpd
@@ -200,52 +200,102 @@ install_openlitespeed() {
     echo "✅ OpenLiteSpeed installation completed"
 }
 
-install_database() {
-    echo "🗄️ Installing database service..."
+create_database_and_user() {
+    local ROOT_PASS="$1"
+    local DB_NAME="$2"
+    local DB_USER="$3"
+    local DB_PASS="$4"
 
-    $INSTALL_CMD mariadb-server
-    # 直接启动 MariaDB（适用于 Docker 容器，无需 systemd）
-    echo "🚀 Starting MariaDB service..."
-    if [ "$PACKAGE_MANAGER" = "apt" ]; then
-        sudo /etc/init.d/mariadb start  # Debian/Ubuntu 的 init 脚本
-    else
-        sudo /etc/init.d/mariadb start  # 通用 init 脚本（RHEL 系可能需要调整）
-    fi
-    SERVICE_NAME="mariadb"
-
-    echo "🔧 Generating a random root password for MySQL..."
-
-    echo "Generated MySQL root password: $MYSQL_ROOT_PASSWORD"
-
-    echo "🔧 Securing database installation (no interaction)..."
-
-    SECURE_SQL=$(cat <<-EOSQL
-ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '${MYSQL_ROOT_PASSWORD}';
-DELETE FROM mysql.user WHERE User='';
-DELETE FROM mysql.user WHERE User='root' AND Host NOT IN ('localhost', '127.0.0.1', '::1');
-DROP DATABASE IF EXISTS test;
-DELETE FROM mysql.db WHERE Db='test' OR Db='test\\_%';
-FLUSH PRIVILEGES;
-EOSQL
-    )
-
-    sudo mysql -e "$SECURE_SQL"
-
-    echo "🧰 Creating database and user..."
-
-    CREATE_USER_SQL=$(cat <<-EOSQL
+    # 生成创建数据库和用户的 SQL
+    local SQL=$(cat <<-EOSQL
 CREATE DATABASE IF NOT EXISTS \`$DB_NAME\`;
-CREATE USER IF NOT EXISTS '$DB_USER'@'localhost' IDENTIFIED BY '$DB_PASSWORD';
+CREATE USER IF NOT EXISTS '$DB_USER'@'localhost' IDENTIFIED BY '$DB_PASS';
 GRANT ALL PRIVILEGES ON \`$DB_NAME\`.* TO '$DB_USER'@'localhost';
 FLUSH PRIVILEGES;
 EOSQL
     )
 
-    sudo mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -e "$CREATE_USER_SQL"
+    echo "Creating database '$DB_NAME' and user '$DB_USER'..."
+    echo "$SQL" | sudo mysql -uroot -p"$ROOT_PASS"
+    if [ $? -eq 0 ]; then
+        echo "✅ Database and user created successfully."
+    else
+        echo "❌ Failed to create database or user."
+        exit 1
+    fi
+}
+set_root_password() {
+    local ROOT_PASS="$1"
+
+    echo "🔍 Detecting MariaDB version..."
+
+    VERSION_FULL=$(sudo mysql -u root -s --skip-column-names -e "SELECT VERSION();" 2>/dev/null)
+    VERSION_MAJOR=$(echo "$VERSION_FULL" | cut -d. -f1)
+    VERSION_MINOR=$(echo "$VERSION_FULL" | cut -d. -f2)
+
+    echo "➡️ MariaDB version detected: $VERSION_FULL"
+
+    echo "🔐 Setting MySQL root password..."
+
+    if (( VERSION_MAJOR >= 10 && VERSION_MINOR >= 4 )); then
+        echo "✅ Using MariaDB >= 10.4 logic: updating auth plugin + password"
+
+        sudo mysql -u root <<-EOSQL
+        ALTER USER 'root'@'localhost' IDENTIFIED VIA mysql_native_password USING PASSWORD('${ROOT_PASS}');
+        FLUSH PRIVILEGES;
+EOSQL
+
+    else
+        echo "✅ Using MariaDB < 10.4 logic: direct password update"
+
+        sudo mysql -u root <<-EOSQL
+        ALTER USER 'root'@'localhost' IDENTIFIED BY '${ROOT_PASS}';
+        FLUSH PRIVILEGES;
+EOSQL
+    fi
+
+    echo "✅ Root password set successfully."
+}
+
+install_database() {
+    echo "🗄️ Installing database service..."
+    # local MYSQL_ROOT_PASSWORD="123123"
+    $INSTALL_CMD mariadb-server
+
+    echo "🚀 Starting MariaDB service..."
+    sudo /etc/init.d/mariadb start
+
+    echo "⏳ Waiting for MariaDB to be ready..."
+    # 等待 MariaDB 启动（最长等待30秒）
+    for i in {1..30}; do
+        if sudo mysqladmin ping &>/dev/null; then
+            echo "✅ MariaDB is up!"
+            break
+        fi
+        echo "⏳ MariaDB not ready yet... ($i)"
+        sleep 1
+    done
+
+    if ! sudo mysqladmin ping &>/dev/null; then
+        echo "❌ MariaDB failed to start or not ready after 30 seconds."
+        exit 1
+    fi
+
+    echo "🔧 Generating a random root password for MySQL..."
+    echo "Generated MySQL root password: $MYSQL_ROOT_PASSWORD"
+
+    echo "🔧 Securing database installation..."
+    # 使用示例：
+    set_root_password "$MYSQL_ROOT_PASSWORD"
+
+    echo "🧰 Creating database and user..."
+
+    create_database_and_user "$MYSQL_ROOT_PASSWORD" "$DB_NAME" "$DB_USER" "$DB_PASSWORD"
 
     echo "✅ Database installation and initialization complete."
-    echo "🔐 Remember to save your MySQL root password: $MYSQL_ROOT_PASSWORD"
+    echo "🔐 Save your MySQL root password: $MYSQL_ROOT_PASSWORD"
 }
+
 
 
 create_mariadb_user() {
@@ -517,13 +567,23 @@ uninstall() {
     echo "🗑️ Start Uninstall..."
 
     sudo systemctl stop lsws
+
+    # 尝试优雅地关闭 mariadb
+    sudo systemctl stop mariadb || true
+    sudo systemctl stop mysql || true
+    # 确保进程终止
+    if pgrep mariadbd > /dev/null; then
+        echo "⚠️  MariaDB process still running. Forcing kill..."
+        sudo pkill -9 mariadbd
+    fi
+    
     $REMOVE_CMD openlitespeed
-    $REMOVE_CMD filebrowser
+    
     $REMOVE_CMD lsphp81 lsphp81-common lsphp81-mysqlnd
     sudo rm -rf /usr/local/lsws
 
     if [ "$PACKAGE_MANAGER" = "apt" ]; then
-        $REMOVE_CMD mysql-server mysql-client mysql-common
+        $REMOVE_CMD mariadb-server mariadb-client mariadb-common
         eval "$AUTOREMOVE_CMD"
         sudo rm -rf /var/lib/mysql /etc/mysql
     else
@@ -591,6 +651,10 @@ case "$1" in
         ;;
     resetAdminPass)
         sudo /usr/local/lsws/admin/misc/admpass.sh
+        ;;
+    installMariaDB)
+        echo "🗄️ Installing MariaDB..."
+        install_database
         ;;
     createDbUser)
         create_mariadb_user
