@@ -8,6 +8,7 @@ MYSQL_ROOT_PASSWORD=$(openssl rand -base64 12) # 随机生成 MySQL root 密码
 WEB_ROOT="/var/www/html"
 INFO_FILE="deploy_info.txt"
 WEBSERVER_USER="www"
+LSWSCCTRL="sudo /usr/local/lsws/bin/lswsctrl"
 #=============== Check System Distribution ===============
 if [ -f /etc/debian_version ]; then
     PACKAGE_MANAGER="apt"
@@ -170,7 +171,12 @@ install_openlitespeed() {
     # 安装 OpenLiteSpeed 和 PHP 81 相关模块
     install_package "openlitespeed"
 
-    install_package "lsphp81 lsphp81-common lsphp81-mysqlnd"
+    install_package "libatomic1 rcs lsphp81 lsphp81-common" 
+    if [ "$PACKAGE_MANAGER" = "apt" ]; then
+        install_package "lsphp81-mysql"
+    else
+        install_package "lsphp81-mysqlnd"
+    fi
 
     # 创建 OpenLiteSpeed 用户和组
     if ! id -u "$WEBSERVER_USER" &>/dev/null; then
@@ -182,7 +188,8 @@ install_openlitespeed() {
     sudo sed -i "s/^group\s.*/group $WEBSERVER_USER/" /usr/local/lsws/conf/httpd_config.conf
 
 
-    sudo systemctl enable lsws --now || { echo "❌ Failed to enable/start OpenLiteSpeed service"; exit 1; }
+    # sudo systemctl enable lsws --now || { echo "❌ Failed to enable/start OpenLiteSpeed service"; exit 1; }
+    $LSWSCCTRL start || { echo "❌ Failed to enable/start OpenLiteSpeed service"; exit 1; }
 
     open_ports 22 80 443 7080 8081 8088
 
@@ -196,15 +203,15 @@ install_openlitespeed() {
 install_database() {
     echo "🗄️ Installing database service..."
 
+    $INSTALL_CMD mariadb-server
+    # 直接启动 MariaDB（适用于 Docker 容器，无需 systemd）
+    echo "🚀 Starting MariaDB service..."
     if [ "$PACKAGE_MANAGER" = "apt" ]; then
-        $INSTALL_CMD mysql-server
-        sudo systemctl enable mysql --now
-        SERVICE_NAME="mysql"
+        sudo /etc/init.d/mariadb start  # Debian/Ubuntu 的 init 脚本
     else
-        $INSTALL_CMD mariadb-server
-        sudo systemctl enable mariadb --now
-        SERVICE_NAME="mariadb"
+        sudo /etc/init.d/mariadb start  # 通用 init 脚本（RHEL 系可能需要调整）
     fi
+    SERVICE_NAME="mariadb"
 
     echo "🔧 Generating a random root password for MySQL..."
 
@@ -541,6 +548,35 @@ updateScript() {
 version(){
     echo "$VERSION"
 }
+check_mysql_running() {
+    # 检查 MariaDB 状态（不依赖 systemctl）    
+    # 方法1：检查 mariadbd 进程是否存在
+    if pgrep -x "mariadbd" >/dev/null; then
+        PROCESS_RUNNING=true
+    else
+        PROCESS_RUNNING=false
+    fi
+    
+    # 方法2：检查 3306 端口是否被监听（MariaDB 默认端口）
+    if ss -tulpn | grep -q ":3306"; then
+        PORT_LISTENING=true
+    else
+        PORT_LISTENING=false
+    fi
+    
+    # 综合判断服务状态
+    if [ "$PROCESS_RUNNING" = true ] && [ "$PORT_LISTENING" = true ]; then
+        echo "✅ Database service (mariadb) is running."
+    else
+        echo "❌ Database service (mariadb) is not running."
+        
+        # 输出额外诊断信息（调试用）
+        echo "--- Debug Information ---"
+        echo "Process check: $(pgrep -x "mariadbd" >/dev/null && echo "Running" || echo "Not running")"
+        echo "Port check: $(ss -tulpn | grep -q ":3306" && echo "Port 3306 is open" || echo "Port 3306 is closed")"
+        echo "-------------------------"
+    fi
+}
 #================== Execute Deployment ==================
 # 主程序入口
 case "$1" in
@@ -550,17 +586,8 @@ case "$1" in
         ;;
     status)
         #检查lsws服务状态
-        if systemctl is-active --quiet lsws; then
-            echo "✅ OpenLiteSpeed is running."
-        else
-            echo "❌ OpenLiteSpeed is not running."
-        fi
-        #检查数据库服务状态
-        if systemctl is-active --quiet mysql; then
-            echo "✅ Database service is running."
-        else
-            echo "❌ Database service is not running."
-        fi
+        $LSWSCCTRL status || echo "❌ Failed to get OpenLiteSpeed status."
+        check_mysql_running
         ;;
     resetAdminPass)
         sudo /usr/local/lsws/admin/misc/admpass.sh

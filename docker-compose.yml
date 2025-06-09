@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  # 单容器环境（包含脚本执行和所有服务）
+  ols-deploy:
+    build:
+      context: .
+      dockerfile: Dockerfile.script
+    container_name: ols-deploy
+    hostname: ols-deploy
+    privileged: true  # 允许执行系统级操作（如安装服务）
+    tty: true         # 保持终端打开
+    stdin_open: true  # 允许交互式输入
+    networks:
+      - ols-network
+    volumes:
+      - ./ols-one-click.sh:/usr/local/bin/ols-one-click.sh  # 挂载脚本（方便修改）
+      - www-data:/var/www/html  # Web内容目录
+      - mysql-data:/var/lib/mysql  # MySQL数据目录
+      - deploy-info:/deploy_info  # 部署信息
+      - /sys/fs/cgroup:/sys/fs/cgroup:ro
+    ports:
+      - "9480:80"    # Web访问
+      - "443:443"  # HTTPS
+      - "7080:7080"  # OpenLiteSpeed管理面板
+      - "8081:8081"  # WordPress示例站点
+      - "8088:8088"  # phpMyAdmin
+    command: bash  # 启动后进入交互式shell
+
+networks:
+  ols-network:
+    driver: bridge
+
+volumes:
+  www-data:
+  mysql-data:
+  deploy-info:

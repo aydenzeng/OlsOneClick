@@ -1,0 +1,41 @@
+FROM debian:bullseye
+
+# 设置环境变量
+ENV PACKAGE_MANAGER=apt
+ENV INSTALL_CMD="apt-get install -y"
+ENV AUTOREMOVE_CMD="apt-get autoremove -y"
+ENV FIREWALL_CMD="echo 'Firewall disabled in Docker'"
+
+# 安装基础依赖
+RUN apt-get update && apt-get install -y \
+    sudo \
+    wget \
+    unzip \
+    tar \
+    curl \
+    openssl \
+    net-tools \
+    iputils-ping \
+    lsb-release \
+    software-properties-common \
+    systemd \
+    && rm -rf /var/lib/apt/lists/*
+
+# 禁用 systemd 不必要的服务
+RUN find /lib/systemd/system/sysinit.target.wants/ -name "systemd-tmpfiles-setup*" -exec rm {} \; && \
+    rm -f /lib/systemd/system/multi-user.target.wants/* && \
+    rm -f /etc/systemd/system/*.wants/* && \
+    rm -f /lib/systemd/system/local-fs.target.wants/* && \
+    rm -f /lib/systemd/system/sockets.target.wants/*udev* && \
+    rm -f /lib/systemd/system/sockets.target.wants/*initctl* && \
+    rm -f /lib/systemd/system/basic.target.wants/* && \
+    rm -f /lib/systemd/system/anaconda.target.wants/*
+
+# 创建必要的目录
+RUN mkdir -p /var/www/html /deploy_info /usr/local/lsws/conf /run/systemd /var/run/dbus
+
+# 设置工作目录
+WORKDIR /deploy_info
+
+# 启动命令 - 使用 systemd 作为 PID 1
+CMD ["/lib/systemd/systemd"]
