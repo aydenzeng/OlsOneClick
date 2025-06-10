@@ -28,12 +28,14 @@ else
 fi
 
 SERVER_IP=$(hostname -I | awk '{print $1}')
+
 # 创建 OpenLiteSpeed 用户和组
 if ! id -u "$WEBSERVER_USER" &>/dev/null; then
     echo "👤 Creating web server user: $WEBSERVER_USER"
     sudo useradd -r -s /bin/false "$WEBSERVER_USER"
 fi
-
+chown -R $WEBSERVER_USER:$WEBSERVER_USER $WEB_ROOT
+chmod -R 755 $WEB_ROOT
 #================== Function Definitions ==================
 
 fix_libcrypt() {
@@ -109,7 +111,7 @@ setup_dashboard_homepage() {
   <div class="nav">
     <a href="http://localhost:7080" target="_blank">LiteSpeed 管理面板</a>
     <a href="/phpmyadmin/" target="_blank">phpMyAdmin 数据库管理</a>
-    <a href="/filemanage/" target="_blank">Tinyfilemanager文件管理器</a>
+    <a href="/tinyfilemanager/" target="_blank">TinyFileManager 文件管理器</a>
   </div>
 </body>
 </html>
@@ -132,6 +134,52 @@ EOF
     echo "🎉 首页部署完成！请访问: http://$SERVER_IP:8088/"
 }
 
+install_tinyfilemanager() {
+    local INSTALL_DIR="/usr/local/lsws/Example/html/tinyfilemanager"
+    local URL="https://raw.githubusercontent.com/prasathmani/tinyfilemanager/master/tinyfilemanager.php"
+
+    echo "📁 Installing TinyFileManager..."
+
+    mkdir -p "$INSTALL_DIR"
+    wget -qO "$INSTALL_DIR/index.php" "$URL"
+
+    # 设置默认用户名密码：admin/admin@123（可修改）
+
+    # 关闭 .htaccess 检查，防止 403
+    sed -i "s/'use_htaccess' => true/'use_htaccess' => false/" "$INSTALL_DIR/index.php"
+
+    # 设置默认根目录为 /var/www/html
+    sed -i "s#^\(\$root_path *= *\).*#\1'/var/www/html';#" "$INSTALL_DIR/index.php"
+
+    local VHCONF="/usr/local/lsws/conf/vhosts/Example/vhconf.conf"
+    local CONTEXT_BLOCK=$(cat <<EOF
+context /tinyfilemanager {
+  location                \$VH_ROOT/html/tinyfilemanager/
+  indexFiles              index.php
+  allowBrowse             1
+  addDefaultCharset       off
+  phpIniOverride  {
+
+  }
+}
+EOF
+)
+
+    echo "🔧 Modifying LiteSpeed virtual host config..."
+
+    if grep -q "context /tinyfilemanager" "$VHCONF"; then
+        echo "⚠️  Context '/tinyfilemanager' already exists, skipping."
+    else
+        echo "🔧 Adding context '/tinyfilemanager' to $VHCONF"
+        echo "" >> "$VHCONF"
+        echo "$CONTEXT_BLOCK" >> "$VHCONF"
+        echo "✅ Context added."
+    fi
+
+    echo "🔄 Restarting LiteSpeed..."
+    $LSWSCCTRL restart
+    echo "✅ TinyFileManager installed at: http://<your-ip>:8088/tinyfilemanager/"
+}
 
 # === 函数：编译并安装 OpenSSH ===
 install_openssh() {
@@ -733,6 +781,9 @@ case "$1" in
     resetAdminPass)
         sudo /usr/local/lsws/admin/misc/admpass.sh
         ;;
+    installTinyFileManager)
+        install_tinyfilemanager
+        ;;
     installMariaDB)
         echo "🗄️ Installing MariaDB..."
         install_database
@@ -782,6 +833,6 @@ case "$1" in
         uninstall
         ;;
     *)
-        echo "Usage: $0 {install|uninstall|resetAdminPass|status|update|installWithWp|version|openPorts|logs|installPhpMyAdmin|createDbUser|installOpenSSH|customHomePage}"
+        echo "Usage: $0 {install|uninstall|resetAdminPass|status|update|installWithWp|version|openPorts|logs|installPhpMyAdmin|createDbUser|installOpenSSH|installTinyFileManager|customHomePage}"
         ;;
 esac
