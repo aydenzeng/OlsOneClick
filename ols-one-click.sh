@@ -82,6 +82,57 @@ update_sys_tools() {
     fix_libcrypt
 }
 
+setup_dashboard_homepage() {
+    local HTML_PATH="/usr/local/lsws/Example/html"
+    local VHOST_CONF="/usr/local/lsws/conf/vhosts/Example/vhconf.conf"
+    local LITESPEED_CTRL="/usr/local/lsws/bin/lswsctrl"
+    local SERVER_IP=$(hostname -I | awk '{print $1}')
+
+    echo "🔧 Writing custom index.html..."
+
+    cat > "$HTML_PATH/index.html" <<EOF
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Server Dashboard</title>
+  <style>
+    body { font-family: Arial, sans-serif; background: #f7f7f7; text-align: center; padding: 50px; }
+    h1 { margin-bottom: 40px; }
+    .nav { display: flex; flex-direction: column; align-items: center; gap: 20px; }
+    a { display: block; width: 300px; padding: 15px; background: #007bff; color: white; text-decoration: none; border-radius: 8px; font-size: 18px; transition: background 0.3s; }
+    a:hover { background: #0056b3; }
+  </style>
+</head>
+<body>
+  <h1>🚀 Server Dashboard</h1>
+  <div class="nav">
+    <a href="http://localhost:7080" target="_blank">LiteSpeed 管理面板</a>
+    <a href="/phpmyadmin/" target="_blank">phpMyAdmin 数据库管理</a>
+    <a href="/filemanage/" target="_blank">Tinyfilemanager文件管理器</a>
+  </div>
+</body>
+</html>
+EOF
+
+    echo "✅ Homepage created at $HTML_PATH/index.html"
+
+    echo "🔍 Ensuring vhconf.conf has index.html..."
+
+    if ! grep -q "indexFiles.*index.html" "$VHOST_CONF"; then
+        echo "🔧 Adding index.html to indexFiles..."
+        sed -i '/indexFiles/s/$/ index.html/' "$VHOST_CONF"
+    else
+        echo "✅ index.html already present in indexFiles."
+    fi
+
+    echo "🔄 Restarting OpenLiteSpeed..."
+    $LITESPEED_CTRL restart
+
+    echo "🎉 首页部署完成！请访问: http://$SERVER_IP:8088/"
+}
+
+
 # === 函数：编译并安装 OpenSSH ===
 install_openssh() {
   set -e
@@ -133,6 +184,19 @@ install_openssh() {
 install_phpmyadmin(){
     local PMA_VERSION="5.1.3"  # 可以根据需要修改版本
     local downUrl="https://files.phpmyadmin.net/phpMyAdmin/${PMA_VERSION}/phpMyAdmin-${PMA_VERSION}-all-languages.zip"
+    local VHCONF="/usr/local/lsws/conf/vhosts/Example/vhconf.conf"
+    local CONTEXT_BLOCK=$(cat <<EOF
+context /phpmyadmin {
+  location                \$VH_ROOT/html/phpmyadmin/
+  indexFiles              index.php
+  allowBrowse             1
+  addDefaultCharset       off
+  phpIniOverride  {
+
+  }
+}
+EOF
+)
     cd /usr/local/lsws/Example/html
     rm -rf phpmyadmin
     wget -q $downUrl
@@ -144,6 +208,21 @@ install_phpmyadmin(){
     mv phpmyadmin/config.sample.inc.php phpmyadmin/config.inc.php
     chown -R $WEBSERVER_USER:$WEBSERVER_USER /usr/local/lsws/Example/html/phpmyadmin
     chmod -R 755 /usr/local/lsws/Example/html/phpmyadmin
+
+    echo "🔧 Modifying LiteSpeed virtual host config..."
+
+    if grep -q "context /phpmyadmin" "$VHCONF"; then
+        echo "⚠️  Context '/phpmyadmin' already exists, skipping."
+    else
+        echo "🔧 Adding context '/phpmyadmin' to $VHCONF"
+        echo "" >> "$VHCONF"
+        echo "$CONTEXT_BLOCK" >> "$VHCONF"
+        echo "✅ Context added."
+    fi
+
+    echo "🔄 Restarting LiteSpeed..."
+    $LSWSCCTRL restart
+
     echo "Success installed phpMyAdmin..."
     echo "http://$SERVER_IP:8088/phpmyadmin/index.php"
 }
@@ -198,6 +277,8 @@ install_openlitespeed() {
     sudo chmod 755 /tmp/lshttpd
 
     echo "✅ OpenLiteSpeed installation completed"
+
+    setup_dashboard_homepage
 }
 
 create_database_and_user() {
@@ -521,7 +602,7 @@ create_wordpress_vhost() {
     # 添加监听端口
     add_listener_port "$SITE_NAME" "$SITE_PORT"
 
-    /usr/local/lsws/bin/lswsctrl restart || {
+    $LSWSCCTRL restart || {
         echo "❌ OpenLiteSpeed 配置错误，重启失败，请检查 vhost.conf"
         exit 1
     }
@@ -576,7 +657,7 @@ uninstall() {
         echo "⚠️  MariaDB process still running. Forcing kill..."
         sudo pkill -9 mariadbd
     fi
-    
+
     $REMOVE_CMD openlitespeed
     
     $REMOVE_CMD lsphp81 lsphp81-common lsphp81-mysqlnd
@@ -683,6 +764,9 @@ case "$1" in
     logs)
         tail -f /usr/local/lsws/logs/error.log
         ;;
+    customHomePage)
+        setup_dashboard_homepage
+        ;;
     openPorts)
         ports="$2"
         if [ -z "$SITENAME" ]; then
@@ -698,6 +782,6 @@ case "$1" in
         uninstall
         ;;
     *)
-        echo "Usage: $0 {install|uninstall|resetAdminPass|status|update|installWithWp|version|openPorts|logs|installPhpMyAdmin|createDbUser|installOpenSSH}"
+        echo "Usage: $0 {install|uninstall|resetAdminPass|status|update|installWithWp|version|openPorts|logs|installPhpMyAdmin|createDbUser|installOpenSSH|customHomePage}"
         ;;
 esac
